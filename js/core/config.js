@@ -3,12 +3,11 @@
    CFG (Supabase URL/key), STATE global — theo VelaE&C Design System §1.3
    ============================================================ */
 
-// TODO: điền anon key từ project Supabase "vela-vttb" của ông
-// Dashboard > Project Settings > API — chỉ lấy "anon public" key,
-// KHÔNG bao giờ đặt service_role key vào file chạy trên trình duyệt.
+// Dashboard > Project Settings > API — publishable key an toàn để đặt ở đây (client-side),
+// KHÔNG bao giờ đặt secret key (sb_secret_...) vào file chạy trên trình duyệt.
 const CFG = {
   SUPABASE_URL: "https://gvhwjemqarnevatwuktq.supabase.co",
-  SUPABASE_ANON_KEY: "YOUR-ANON-KEY", // ← còn thiếu, gửi tôi khóa anon public để điền nốt
+  SUPABASE_ANON_KEY: "sb_publishable_5sf273CSlrsTx4-1RFyl3g_xxvIjh-b",
   APP_NAME: "VELA_VTTB",
   STORAGE_BUCKET_VEHICLE_PHOTOS: "vttb-vehicle-photos",
   STORAGE_BUCKET_ATTACHMENTS: "vttb-attachments",
