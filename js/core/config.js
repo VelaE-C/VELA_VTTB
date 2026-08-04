@@ -3,12 +3,12 @@
    CFG (Supabase URL/key), STATE global — theo VelaE&C Design System §1.3
    ============================================================ */
 
-// TODO: điền URL + anon key từ project Supabase "vela-vttb" của ông
+// TODO: điền anon key từ project Supabase "vela-vttb" của ông
 // Dashboard > Project Settings > API — chỉ lấy "anon public" key,
 // KHÔNG bao giờ đặt service_role key vào file chạy trên trình duyệt.
 const CFG = {
-  SUPABASE_URL: "https://YOUR-PROJECT-REF.supabase.co",
-  SUPABASE_ANON_KEY: "YOUR-ANON-KEY",
+  SUPABASE_URL: "https://gvhwjemqarnevatwuktq.supabase.co",
+  SUPABASE_ANON_KEY: "YOUR-ANON-KEY", // ← còn thiếu, gửi tôi khóa anon public để điền nốt
   APP_NAME: "VELA_VTTB",
   STORAGE_BUCKET_VEHICLE_PHOTOS: "vttb-vehicle-photos",
   STORAGE_BUCKET_ATTACHMENTS: "vttb-attachments",
@@ -43,10 +43,10 @@ window.MODULES = window.MODULES || {};
 // roles: role nào được thấy tab này trong sidebar (ẩn hẳn khỏi DOM nếu không đủ quyền)
 const NAV_ITEMS = [
   { id: "dashboard", label: "Tổng quan", icon: "📊", group: null, roles: ["admin", "manager", "editor", "viewer"], bottomNav: true },
+  { id: "nhanxe", label: "Nhận xe", icon: "🚚", group: "Vật tư", roles: ["admin", "manager", "editor"], bottomNav: true },
   { id: "danhmuc", label: "Danh mục", icon: "🗂️", group: "Dữ liệu nền", roles: ["admin", "manager", "editor", "viewer"], bottomNav: true },
   { id: "users", label: "Người dùng", icon: "👤", group: "Dữ liệu nền", roles: ["admin"], bottomNav: false },
   // Các module dưới đây sẽ bổ sung dần theo checklist build (Bước 6+) — để sẵn cấu trúc, chưa gắn module thật.
-  // { id: "nhanxe", label: "Nhận xe", icon: "🚚", group: "Vật tư", roles: ["admin","manager","editor"] },
   // { id: "nhapchitiet", label: "Nhập chi tiết", icon: "📝", group: "Vật tư", roles: ["admin","manager"] },
   // { id: "nganesach", label: "Ngân sách & Dự trù", icon: "💰", group: "Vật tư", roles: ["admin","manager","editor","viewer"] },
   // { id: "hoadon", label: "Hóa đơn", icon: "🧾", group: "Kế toán", roles: ["admin","manager","editor"] },
