@@ -44,11 +44,10 @@ const NAV_ITEMS = [
   { id: "dashboard", label: "Tổng quan", icon: "📊", group: null, roles: ["admin", "manager", "editor", "viewer"], bottomNav: true },
   { id: "nhanxe", label: "Nhận xe", icon: "🚚", group: "Vật tư", roles: ["admin", "manager", "editor"], bottomNav: true },
   { id: "nhapchitiet", label: "Nhập chi tiết", icon: "📝", group: "Vật tư", roles: ["admin", "manager"], bottomNav: false },
+  { id: "hoadon", label: "Hóa đơn", icon: "🧾", group: "Kế toán", roles: ["admin", "manager", "editor"], bottomNav: false },
   { id: "danhmuc", label: "Danh mục", icon: "🗂️", group: "Dữ liệu nền", roles: ["admin", "manager", "editor", "viewer"], bottomNav: true },
   { id: "users", label: "Người dùng", icon: "👤", group: "Dữ liệu nền", roles: ["admin"], bottomNav: false },
   // Các module dưới đây sẽ bổ sung dần theo checklist build (Bước 6+) — để sẵn cấu trúc, chưa gắn module thật.
-  // { id: "nganesach", label: "Ngân sách & Dự trù", icon: "💰", group: "Vật tư", roles: ["admin","manager","editor","viewer"] },
-  // { id: "hoadon", label: "Hóa đơn", icon: "🧾", group: "Kế toán", roles: ["admin","manager","editor"] },
   // { id: "thanhtoan", label: "Thanh toán", icon: "💳", group: "Kế toán", roles: ["admin","manager","editor"] },
   // { id: "congno", label: "Công nợ NCC", icon: "📇", group: "Kế toán", roles: ["admin","manager","editor","viewer"] },
   // { id: "thietbi", label: "Thiết bị", icon: "🏗️", group: "Thiết bị", roles: ["admin","manager","editor","viewer"] },
