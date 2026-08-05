@@ -27,13 +27,13 @@ function toast(msg, type) {
 }
 
 // ---------- MODAL ----------
-function openModal({ title, bodyHtml, footerHtml, onClose }) {
+function openModal({ title, bodyHtml, footerHtml, onClose, wide }) {
   closeModal();
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.id = "active-modal";
   overlay.innerHTML = `
-    <div class="modal-box">
+    <div class="modal-box"${wide ? ' style="max-width:920px"' : ""}>
       <div class="modal-header">
         <span>${escapeHtml(title || "")}</span>
         <button class="modal-close" aria-label="Đóng" onclick="closeModal()">✕</button>
@@ -126,6 +126,64 @@ function parseFormattedNumber(inputId) {
   if (!el) return NaN;
   const raw = el.value.replace(/\./g, "").replace(",", ".").trim();
   return raw ? parseFloat(raw) : NaN;
+}
+
+// ---------- Ô CHỌN CÓ TÌM KIẾM (thay <select> khi danh sách dài) ----------
+// groupedOptions: [{ groupLabel, items: [{ value, label }] }] — nhóm đầu tiên nên là
+// nhóm ưu tiên (vd "Đã dùng ở dự án này") nếu muốn đẩy lên trên cùng.
+// Chỉ cho CHỌN trong danh sách, không cho gõ tự do tạo giá trị mới.
+function searchableSelectHtml(id, placeholder) {
+  return `<div class="ssel" id="${id}">
+    <input type="text" class="ssel-input" placeholder="${escapeHtml(placeholder || "Gõ để tìm...")}" autocomplete="off">
+    <input type="hidden" class="ssel-value">
+    <div class="ssel-dropdown" style="display:none"></div>
+  </div>`;
+}
+function initSearchableSelect(containerId, groupedOptions, opts) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const input = container.querySelector(".ssel-input");
+  const hidden = container.querySelector(".ssel-value");
+  const dropdown = container.querySelector(".ssel-dropdown");
+
+  function renderList(filterText) {
+    const q = (filterText || "").toLowerCase().trim();
+    let html = "";
+    let hasAny = false;
+    groupedOptions.forEach((g) => {
+      const items = g.items.filter((it) => !q || it.label.toLowerCase().includes(q));
+      if (!items.length) return;
+      hasAny = true;
+      html += `<div class="ssel-group">${escapeHtml(g.groupLabel)}</div>`;
+      items.forEach((it) => {
+        html += `<div class="ssel-option" data-value="${escapeHtml(it.value)}" data-label="${escapeHtml(it.label)}">${escapeHtml(it.label)}</div>`;
+      });
+    });
+    dropdown.innerHTML = hasAny ? html : `<div class="ssel-empty">Không tìm thấy — kiểm tra chính tả hoặc thêm mới ở Danh mục</div>`;
+    dropdown.style.display = "block";
+  }
+
+  input.addEventListener("focus", () => renderList(""));
+  input.addEventListener("input", () => { hidden.value = ""; renderList(input.value); });
+  dropdown.addEventListener("mousedown", (e) => {
+    const opt = e.target.closest(".ssel-option");
+    if (!opt) return;
+    hidden.value = opt.dataset.value;
+    input.value = opt.dataset.label;
+    dropdown.style.display = "none";
+    if (opts && opts.onSelect) opts.onSelect(opt.dataset.value);
+  });
+  document.addEventListener("click", (e) => {
+    if (!container.contains(e.target)) dropdown.style.display = "none";
+  });
+  // Nếu người dùng gõ xong rồi rời ô mà không chọn -> không giữ chữ mồ côi, xóa về rỗng
+  input.addEventListener("blur", () => {
+    setTimeout(() => { if (!hidden.value) input.value = ""; }, 200);
+  });
+}
+function getSearchableSelectValue(containerId) {
+  const el = document.getElementById(containerId);
+  return el ? el.querySelector(".ssel-value").value : "";
 }
 
 // ---------- EMPTY STATE ----------
