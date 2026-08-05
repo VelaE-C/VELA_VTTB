@@ -17,11 +17,16 @@
    ============================================================ */
 
 const PHOTO_STEPS = [
-  { type: "phieu_giao_nhan", order: 1, label: "Phiếu giao nhận", fullSize: true, multi: true, maxPages: 3 },
-  { type: "dau_xe", order: 2, label: "Đầu xe", fullSize: false, multi: false },
-  { type: "sau_xe", order: 3, label: "Sau lưng xe", fullSize: false, multi: false },
-  { type: "hong_xe", order: 4, label: "Bên hông xe", fullSize: false, multi: false },
+  { type: "phieu_giao_nhan", order: 1, label: "Phiếu giao nhận", highQuality: true, multi: true, maxPages: 3 },
+  { type: "dau_xe", order: 2, label: "Đầu xe", highQuality: false, multi: false },
+  { type: "sau_xe", order: 3, label: "Sau lưng xe", highQuality: false, multi: false },
+  { type: "hong_xe", order: 4, label: "Bên hông xe", highQuality: false, multi: false },
 ];
+
+// PGN cần đọc rõ số liệu/chữ ký nên resize nhẹ tay hơn 3 ảnh còn lại
+// (2400px/0.92 thay vì 1600px/0.7 mặc định) — không giữ nguyên gốc tuyệt đối
+// vì ảnh gốc camera (~3-5MB) làm dung lượng Storage cạn quá nhanh.
+const HQ_RESIZE = { maxDim: 2400, quality: 0.92 };
 
 // Ảnh mẫu hướng dẫn cho từng bước — dán link RAW (không phải link xem trên GitHub,
 // phải là raw.githubusercontent.com/... hoặc CDN khác cho phép nhúng <img>) vào đây.
@@ -57,10 +62,7 @@ const NhanXe = {
     container.innerHTML = `
       <h2>Nhận xe</h2>
       <div class="card">
-        <div class="card-header">
-          <h3>${this.mode === "capture" ? "Chụp xe khi nhận hàng" : "Nhập bù (BCH sót xe)"}</h3>
-          ${canBackfill ? `<button class="btn btn-sm btn-secondary" onclick="NhanXe.toggleMode()">${this.mode === "capture" ? "Chuyển sang Nhập bù" : "Quay lại Chụp trực tiếp"}</button>` : ""}
-        </div>
+        ${canBackfill ? `<div style="text-align:right;margin-bottom:8px"><button class="btn btn-sm btn-secondary" onclick="NhanXe.toggleMode()">${this.mode === "capture" ? "Chuyển sang Nhập bù" : "Quay lại Chụp trực tiếp"}</button></div>` : ""}
         <div id="nhanxe-body"></div>
       </div>`;
 
@@ -169,7 +171,7 @@ const NhanXe = {
     const body = document.getElementById("nhanxe-body");
     const pageBadge = step.multi ? ` <span class="badge badge-info">Trang ${this.pageCount + 1}/${step.maxPages}</span>` : "";
     body.innerHTML = `
-      <h3>Bước ${this.stepIndex + 1}/4 — ${step.label}${step.fullSize ? ' <span class="badge badge-info">Giữ chất lượng gốc</span>' : ""}${pageBadge}</h3>
+      <h3>Bước ${this.stepIndex + 1}/4 — ${step.label}${step.highQuality ? ' <span class="badge badge-info">Chất lượng cao</span>' : ""}${pageBadge}</h3>
       ${step.multi ? `<div class="helper" style="margin-bottom:8px">Nhiều đơn hàng có thể có nhiều trang phiếu giao nhận — chụp lần lượt từng trang, tối đa ${step.maxPages} trang.</div>` : ""}
 
       <div style="position:relative;width:100%;border-radius:8px;overflow:hidden;background:#000">
@@ -247,15 +249,10 @@ const NhanXe = {
 
     const step = PHOTO_STEPS[this.stepIndex];
     let w = video.videoWidth, h = video.videoHeight;
-    let quality = CFG.IMAGE_RESIZE.quality;
+    const { maxDim, quality } = step.highQuality ? HQ_RESIZE : CFG.IMAGE_RESIZE;
 
-    if (!step.fullSize) {
-      const maxDim = CFG.IMAGE_RESIZE.maxDim;
-      if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
-      else if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
-    } else {
-      quality = 1.0; // Phiếu giao nhận: giữ đúng độ phân giải camera, chất lượng JPEG cao nhất
-    }
+    if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
+    else if (h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
 
     canvas.width = w; canvas.height = h;
     canvas.getContext("2d").drawImage(video, 0, 0, w, h);
@@ -334,7 +331,7 @@ const NhanXe = {
     const canAddMore = step.multi ? count < step.maxPages : !done;
     const countLabel = step.multi && count > 0 ? ` <span class="badge badge-done">${count}/${step.maxPages} trang</span>` : done ? '<span class="badge badge-done">Đã tải</span>' : "";
     return `<div style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--gray2);border-radius:6px">
-      <span style="flex:1">${escapeHtml(step.label)}${step.fullSize ? ' <span class="badge badge-info">Giữ chất lượng gốc</span>' : ""}${countLabel}</span>
+      <span style="flex:1">${escapeHtml(step.label)}${step.highQuality ? ' <span class="badge badge-info">Chất lượng cao</span>' : ""}${countLabel}</span>
       ${canAddMore ? `<input type="file" accept="image/*" style="width:auto" onchange="NhanXe.backfillFileSelected('${step.type}', this)">` : ""}
     </div>`;
   },
@@ -347,8 +344,9 @@ const NhanXe = {
     this.backfillPageCounts = this.backfillPageCounts || {};
     const pageNumber = step.multi ? this.backfillPageCount(type) + 1 : 1;
     try {
-      // Phiếu giao nhận: upload nguyên file gốc, KHÔNG resize, để giữ đối chiếu được số liệu
-      const blob = step.fullSize ? file : await resizeImage(file, CFG.IMAGE_RESIZE.maxDim, CFG.IMAGE_RESIZE.quality);
+      // Phiếu giao nhận: resize nhẹ tay (2400px/0.92) để vẫn đọc rõ số liệu, các ảnh khác nén như bình thường
+      const { maxDim, quality } = step.highQuality ? HQ_RESIZE : CFG.IMAGE_RESIZE;
+      const blob = await resizeImage(file, maxDim, quality);
       const path = `${this.session.project_id}/${this.session.id}/${type}_${pageNumber}.jpg`;
       const { error: upErr } = await sb.storage.from(CFG.STORAGE_BUCKET_VEHICLE_PHOTOS).upload(path, blob, { contentType: file.type || "image/jpeg", upsert: true });
       if (upErr) throw upErr;
