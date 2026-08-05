@@ -29,6 +29,8 @@ const STATE = {
   projects: [],
   materials: [],
   suppliers: [],
+  materialGroupsL1: [],
+  materialGroupsL2: [],
 };
 
 // Supabase client — khởi tạo sau khi CDN script đã load (xem thứ tự script trong index.html)
