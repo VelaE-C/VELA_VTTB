@@ -230,7 +230,14 @@ const NhanXe = {
     this.stopCamera();
     const statusEl = document.getElementById("nx-status-text");
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "environment",
+          width: { ideal: 3840 },
+          height: { ideal: 2160 },
+        },
+        audio: false,
+      });
       const video = document.getElementById("nx-video");
       video.srcObject = this.stream;
     } catch (e) {
