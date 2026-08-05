@@ -52,6 +52,7 @@ const NhapChiTiet = {
         const project = STATE.projects.find((p) => p.id === v.project_id);
         const isBackfill = v.entry_method === "manual_backfill";
         return `<tr>
+          <td class="mono">${escapeHtml(v.receipt_code || "—")}</td>
           <td>${escapeHtml(project ? project.project_name : "—")}</td>
           <td>${escapeHtml(v.plate_number)}</td>
           <td class="hide-mobile">${fmtDateTime(v.created_at)}</td>
@@ -64,7 +65,7 @@ const NhapChiTiet = {
     body.innerHTML = `
       <div class="card">
         <div class="card-header"><h3>Hàng đợi chờ nhập (${data.length})</h3></div>
-        <table><thead><tr><th>Dự án</th><th>Biển số</th><th class="hide-mobile">Thời điểm nhận</th><th>Loại</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+        <table><thead><tr><th>Mã phiếu</th><th>Dự án</th><th>Biển số</th><th class="hide-mobile">Thời điểm nhận</th><th>Loại</th><th></th></tr></thead><tbody>${rows}</tbody></table>
       </div>`;
   },
 
@@ -103,7 +104,7 @@ const NhapChiTiet = {
 
     let q = sb
       .from("goods_receipts")
-      .select("*, materials(material_code, material_name), suppliers(supplier_name), vehicle_receipts(plate_number)")
+      .select("*, materials(material_code, material_name), suppliers(supplier_name), vehicle_receipts(plate_number, receipt_code)")
       .order("receipt_date", { ascending: false });
     if (fromDate) q = q.gte("receipt_date", fromDate);
     if (toDate) q = q.lte("receipt_date", toDate);
@@ -117,7 +118,8 @@ const NhapChiTiet = {
     const rows = (data || [])
       .map((r) => {
         const project = STATE.projects.find((p) => p.id === r.project_id);
-        return `<tr>
+        return `<tr class="hist-row" style="cursor:pointer" onclick="NhapChiTiet.openSession('${r.vehicle_receipt_id}')">
+          <td class="mono">${escapeHtml(r.vehicle_receipts ? r.vehicle_receipts.receipt_code || "—" : "—")}</td>
           <td>${fmtDate(r.receipt_date)}</td>
           <td>${escapeHtml(project ? project.project_name : "—")}</td>
           <td class="hide-mobile">${escapeHtml(r.vehicle_receipts ? r.vehicle_receipts.plate_number : "—")}</td>
@@ -138,9 +140,10 @@ const NhapChiTiet = {
           <h3>Kết quả (${(data || []).length}${(data || []).length === 200 ? " — chỉ hiện 200 dòng gần nhất, thu hẹp bộ lọc để xem hết" : ""})</h3>
           <strong class="num">Tổng: ${fmtMoney(total)}</strong>
         </div>
+        <div class="helper" style="margin-bottom:8px">Bấm vào 1 dòng để xem lại ảnh + toàn bộ vật tư của đúng xe đó.</div>
         ${
           data && data.length
-            ? `<table><thead><tr><th>Ngày</th><th>Dự án</th><th class="hide-mobile">Biển số</th><th>Vật tư</th><th>NCC</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead><tbody>${rows}</tbody></table>`
+            ? `<table><thead><tr><th>Mã phiếu</th><th>Ngày</th><th>Dự án</th><th class="hide-mobile">Biển số</th><th>Vật tư</th><th>NCC</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead><tbody>${rows}</tbody></table>`
             : emptyStateHtml("Không có dữ liệu khớp bộ lọc.")
         }
       </div>`;
@@ -214,7 +217,7 @@ const NhapChiTiet = {
       <button class="btn btn-secondary btn-sm" onclick="NhapChiTiet.render(document.getElementById('content-area'))">← Quay lại hàng đợi</button>
       <div class="card" style="margin-top:12px">
         <div class="card-header">
-          <h3>${escapeHtml(project ? project.project_name : "")} — Biển số ${escapeHtml(s.plate_number)}</h3>
+          <h3>${escapeHtml(project ? project.project_name : "")} — Biển số ${escapeHtml(s.plate_number)} <span class="mono" style="font-weight:400;color:var(--gray5)">(${escapeHtml(s.receipt_code || "—")})</span></h3>
           ${s.entry_method === "manual_backfill" ? '<span class="badge badge-progress">Nhập bù — không chụp trực tiếp</span>' : ""}
         </div>
         <div class="helper" style="margin-bottom:12px">Nhận lúc ${fmtDateTime(s.created_at)} (giờ server)</div>
@@ -233,7 +236,7 @@ const NhapChiTiet = {
             <label>Vật tư</label>
             <select id="nct-material" onchange="NhapChiTiet.onMaterialChange()">
               <option value="">— Chọn vật tư —</option>
-              ${STATE.materials.map((m) => `<option value="${m.id}">${escapeHtml(m.material_code)} — ${escapeHtml(m.material_name)}</option>`).join("")}
+              ${this.materialSelectOptions()}
             </select>
           </div>
           <div class="field">
@@ -266,6 +269,44 @@ const NhapChiTiet = {
   },
 
   // Khi chọn vật tư -> tự đổ đơn vị mặc định (khóa, không sửa được) + gợi ý giá gần nhất
+  // Gom vật tư theo Level 1 > Level 2 dưới dạng <optgroup> — dễ tìm hơn khi danh sách dài
+  materialSelectOptions() {
+    const l2ById = {};
+    STATE.materialGroupsL2.forEach((g) => { l2ById[g.id] = g; });
+    const l1ById = {};
+    STATE.materialGroupsL1.forEach((g) => { l1ById[g.id] = g; });
+
+    const groups = {}; // key: "l1_name|||l2_name" -> [materials]
+    const noGroup = [];
+    STATE.materials.forEach((m) => {
+      const l2 = l2ById[m.l2_id];
+      const l1 = l2 ? l1ById[l2.l1_id] : null;
+      if (!l2 || !l1) { noGroup.push(m); return; }
+      const key = `${l1.name}|||${l2.name}`;
+      groups[key] = groups[key] || [];
+      groups[key].push(m);
+    });
+
+    const sortedKeys = Object.keys(groups).sort();
+    let html = sortedKeys
+      .map((key) => {
+        const [l1name, l2name] = key.split("|||");
+        const opts = groups[key]
+          .sort((a, b) => a.material_code.localeCompare(b.material_code))
+          .map((m) => `<option value="${m.id}">${escapeHtml(m.material_code)} — ${escapeHtml(m.material_name)}</option>`)
+          .join("");
+        return `<optgroup label="${escapeHtml(l1name)} › ${escapeHtml(l2name)}">${opts}</optgroup>`;
+      })
+      .join("");
+
+    if (noGroup.length) {
+      html += `<optgroup label="Chưa gán nhóm (vào Danh mục gán trước)">${noGroup
+        .map((m) => `<option value="${m.id}">${escapeHtml(m.material_code)} — ${escapeHtml(m.material_name)}</option>`)
+        .join("")}</optgroup>`;
+    }
+    return html;
+  },
+
   async onMaterialChange() {
     const materialId = document.getElementById("nct-material").value;
     const material = STATE.materials.find((m) => m.id === materialId);
