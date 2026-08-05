@@ -184,6 +184,7 @@ tr:nth-child(even) td { background: var(--gray1); }
 /* ============ EMPTY STATE ============ */
 .empty-state { text-align: center; padding: 40px 16px; color: var(--gray5); }
 .empty-state .empty-icon { font-size: 32px; margin-bottom: 8px; }
+.mono { font-variant-numeric: tabular-nums; letter-spacing: .02em; }
 
 /* ============ LOGIN ============ */
 #login-screen {
