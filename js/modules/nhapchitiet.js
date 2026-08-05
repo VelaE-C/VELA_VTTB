@@ -139,17 +139,17 @@ const NhapChiTiet = {
         <div class="form-grid">
           <div class="field">
             <label>Vật tư</label>
-            <input id="nct-material" list="nct-material-list" placeholder="Gõ mã hoặc tên vật tư" onchange="NhapChiTiet.onMaterialChange()">
-            <datalist id="nct-material-list">
-              ${STATE.materials.map((m) => `<option value="${escapeHtml(m.material_code)} — ${escapeHtml(m.material_name)}" data-id="${m.id}">`).join("")}
-            </datalist>
+            <select id="nct-material" onchange="NhapChiTiet.onMaterialChange()">
+              <option value="">— Chọn vật tư —</option>
+              ${STATE.materials.map((m) => `<option value="${m.id}">${escapeHtml(m.material_code)} — ${escapeHtml(m.material_name)}</option>`).join("")}
+            </select>
           </div>
           <div class="field">
             <label>Nhà cung cấp</label>
-            <input id="nct-supplier" list="nct-supplier-list" placeholder="Gõ tên NCC">
-            <datalist id="nct-supplier-list">
-              ${STATE.suppliers.map((sp) => `<option value="${escapeHtml(sp.supplier_name)}">`).join("")}
-            </datalist>
+            <select id="nct-supplier">
+              <option value="">— Chọn NCC —</option>
+              ${STATE.suppliers.map((sp) => `<option value="${sp.id}">${escapeHtml(sp.supplier_name)}</option>`).join("")}
+            </select>
           </div>
           <div class="field">
             <label>Hạng mục</label>
@@ -158,23 +158,25 @@ const NhapChiTiet = {
           </div>
           <div class="field">
             <label>Đơn vị</label>
-            <input id="nct-unit" placeholder="Bao / m³ / Tấn...">
+            <input id="nct-unit" readonly placeholder="Tự lấy theo vật tư đã chọn" style="background:var(--gray1);color:var(--gray5)">
           </div>
           <div class="field">
             <label>Số lượng</label>
-            <input id="nct-qty" type="number" step="any" placeholder="0">
+            <input id="nct-qty" placeholder="0">
           </div>
           <div class="field">
             <label>Đơn giá <span class="helper" id="nct-price-hint"></span></label>
-            <input id="nct-price" type="number" step="any" placeholder="0">
+            <input id="nct-price" placeholder="0">
           </div>
         </div>
         <button class="btn btn-primary" onclick="NhapChiTiet.addLine()">+ Thêm dòng</button>
       </div>
 
-      <button class="btn btn-primary" style="margin-top:4px" onclick="NhapChiTiet.finishSession()">Hoàn tất phiên này</button>`;
+      <button class="btn btn-primary" style="margin-top:4px" onclick="NhapChiTiet.finishSession()">Hoàn tất xe này</button>`;
 
     this.loadCategorySuggestions();
+    attachNumberFormat("nct-qty");
+    attachNumberFormat("nct-price");
   },
 
   async loadCategorySuggestions() {
@@ -184,12 +186,13 @@ const NhapChiTiet = {
     if (dl) dl.innerHTML = unique.map((c) => `<option value="${escapeHtml(c)}">`).join("");
   },
 
-  // Khi chọn vật tư -> tự đổ đơn vị mặc định + gợi ý giá gần nhất (không phân biệt NCC nào)
+  // Khi chọn vật tư -> tự đổ đơn vị mặc định (khóa, không sửa được) + gợi ý giá gần nhất
   async onMaterialChange() {
-    const val = document.getElementById("nct-material").value;
-    const material = STATE.materials.find((m) => val.startsWith(m.material_code));
-    if (!material) return;
-    document.getElementById("nct-unit").value = material.default_unit || "";
+    const materialId = document.getElementById("nct-material").value;
+    const material = STATE.materials.find((m) => m.id === materialId);
+    const unitEl = document.getElementById("nct-unit");
+    if (!material) { unitEl.value = ""; return; }
+    unitEl.value = material.default_unit || "";
 
     const hint = document.getElementById("nct-price-hint");
     hint.textContent = "(đang tra giá gần nhất...)";
@@ -200,7 +203,7 @@ const NhapChiTiet = {
       .order("receipt_date", { ascending: false })
       .limit(1);
     if (data && data.length) {
-      document.getElementById("nct-price").value = data[0].unit_price;
+      document.getElementById("nct-price").value = Number(data[0].unit_price).toLocaleString("vi-VN");
       hint.textContent = `(gợi ý theo giá ngày ${fmtDate(data[0].receipt_date)} — sửa lại nếu khác)`;
     } else {
       hint.textContent = "(chưa có giá tham khảo — vật tư mới)";
@@ -208,17 +211,17 @@ const NhapChiTiet = {
   },
 
   async addLine() {
-    const materialVal = document.getElementById("nct-material").value;
-    const material = STATE.materials.find((m) => materialVal.startsWith(m.material_code));
-    const supplierVal = document.getElementById("nct-supplier").value.trim();
-    const supplier = STATE.suppliers.find((s) => s.supplier_name === supplierVal);
+    const materialId = document.getElementById("nct-material").value;
+    const material = STATE.materials.find((m) => m.id === materialId);
+    const supplierId = document.getElementById("nct-supplier").value;
+    const supplier = STATE.suppliers.find((s) => s.id === supplierId);
     const category = document.getElementById("nct-category").value.trim();
     const unit = document.getElementById("nct-unit").value.trim();
-    const qty = parseFloat(document.getElementById("nct-qty").value);
-    const price = parseFloat(document.getElementById("nct-price").value);
+    const qty = parseFormattedNumber("nct-qty");
+    const price = parseFormattedNumber("nct-price");
 
-    if (!material) { toast("Chọn đúng 1 vật tư từ danh sách gợi ý", "error"); return; }
-    if (!supplier) { toast("Chọn đúng 1 NCC từ danh sách gợi ý (hoặc thêm mới ở Danh mục trước)", "error"); return; }
+    if (!material) { toast("Chọn 1 vật tư trong danh mục", "error"); return; }
+    if (!supplier) { toast("Chọn 1 NCC trong danh mục", "error"); return; }
     if (!category) { toast("Nhập hạng mục", "error"); return; }
     if (!qty || qty <= 0) { toast("Nhập số lượng hợp lệ", "error"); return; }
     if (isNaN(price) || price < 0) { toast("Nhập đơn giá hợp lệ", "error"); return; }
