@@ -43,15 +43,19 @@ async function loadProfile() {
 }
 
 async function loadCoreLookups() {
-  const [{ data: projects }, { data: materials }, { data: suppliers }] = await Promise.all([
+  const [{ data: projects }, { data: materials }, { data: suppliers }, { data: l1 }, { data: l2 }] = await Promise.all([
     sb.from("projects").select("*").order("project_name"),
     sb.from("materials").select("*").order("material_code"),
     sb.from("suppliers").select("*").order("supplier_name"),
+    sb.from("material_groups_l1").select("*").order("name"),
+    sb.from("material_groups_l2").select("*").order("name"),
   ]);
   // RLS đã tự lọc projects theo quyền — editor/viewer chỉ nhận về dự án được gán
   STATE.projects = projects || [];
   STATE.materials = materials || [];
   STATE.suppliers = suppliers || [];
+  STATE.materialGroupsL1 = l1 || [];
+  STATE.materialGroupsL2 = l2 || [];
 }
 
 // ---------- LOGIN / LOGOUT ----------
