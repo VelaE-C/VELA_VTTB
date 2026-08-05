@@ -44,6 +44,7 @@ const NAV_ITEMS = [
   { id: "dashboard", label: "Tổng quan", icon: "📊", group: null, roles: ["admin", "manager", "editor", "viewer"], bottomNav: true },
   { id: "nhanxe", label: "Nhận xe", icon: "🚚", group: "Vật tư", roles: ["admin", "manager", "editor"], bottomNav: true },
   { id: "nhapchitiet", label: "Nhập chi tiết", icon: "📝", group: "Vật tư", roles: ["admin", "manager"], bottomNav: false },
+  { id: "ngansach", label: "Ngân sách & Dự trù", icon: "💰", group: "Vật tư", roles: ["admin", "manager", "editor", "viewer"], bottomNav: false },
   { id: "hoadon", label: "Hóa đơn", icon: "🧾", group: "Kế toán", roles: ["admin", "manager", "editor"], bottomNav: false },
   { id: "thanhtoan", label: "Thanh toán", icon: "💳", group: "Kế toán", roles: ["admin", "manager", "editor"], bottomNav: false },
   { id: "congno", label: "Công nợ NCC", icon: "📇", group: "Kế toán", roles: ["admin", "manager", "editor", "viewer"], bottomNav: false },
