@@ -164,29 +164,31 @@ const NhanXe = {
     const guideUrl = GUIDE_IMAGES[step.type];
     const body = document.getElementById("nhanxe-body");
     body.innerHTML = `
-      <div style="display:flex;gap:6px;margin-bottom:12px">
-        ${PHOTO_STEPS.map((s, i) => `<div style="flex:1;height:4px;border-radius:2px;background:${i < this.stepIndex ? "var(--green)" : i === this.stepIndex ? "var(--blue)" : "var(--gray2)"}"></div>`).join("")}
-      </div>
       <h3>Bước ${this.stepIndex + 1}/4 — ${step.label}${step.fullSize ? ' <span class="badge badge-info">Giữ chất lượng gốc</span>' : ""}</h3>
-      <video id="nx-video" autoplay playsinline muted style="width:100%;border-radius:8px;background:#000;max-height:360px;object-fit:cover"></video>
-      <canvas id="nx-canvas" style="display:none"></canvas>
 
-      <div style="display:flex;align-items:center;justify-content:center;gap:24px;margin-top:16px">
-        <div style="text-align:center;flex:none">
-          <div style="width:64px;height:64px;border-radius:50%;overflow:hidden;border:2px solid var(--gray3);background:var(--gray1);display:flex;align-items:center;justify-content:center">
-            ${guideUrl ? `<img src="${guideUrl}" alt="Ảnh mẫu ${escapeHtml(step.label)}" style="width:100%;height:100%;object-fit:cover">` : `<span style="font-size:10.5px;color:var(--gray4)">Mẫu</span>`}
-          </div>
-          <div style="font-size:10.5px;color:var(--gray5);margin-top:4px">Tham khảo</div>
-        </div>
-
+      <div style="position:relative;width:100%;border-radius:8px;overflow:hidden;background:#000">
+        <video id="nx-video" autoplay playsinline muted style="width:100%;display:block;max-height:360px;object-fit:cover"></video>
+        <canvas id="nx-canvas" style="display:none"></canvas>
         <button id="nx-btn-capture" onclick="NhanXe.capturePhoto()" aria-label="Chụp"
-          style="width:76px;height:76px;border-radius:50%;border:4px solid var(--blue);background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;flex:none">
-          <span id="nx-btn-inner" style="width:58px;height:58px;border-radius:50%;background:var(--blue);display:block"></span>
+          style="position:absolute;left:50%;bottom:14px;transform:translateX(-50%);width:64px;height:64px;border-radius:50%;
+                 border:3px solid rgba(255,255,255,0.9);background:rgba(255,255,255,0.35);backdrop-filter:blur(2px);
+                 cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">
+          <span id="nx-btn-inner" style="width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.9);display:block"></span>
         </button>
-
-        <div style="width:64px;flex:none"></div>
       </div>
-      <div id="nx-status-text" style="text-align:center;margin-top:10px;font-size:12.5px;min-height:18px"></div>`;
+
+      <div id="nx-status-text" style="text-align:center;margin-top:8px;font-size:12.5px;min-height:18px"></div>
+
+      ${
+        guideUrl
+          ? `<div style="margin-top:10px">
+              <div style="font-size:11px;color:var(--gray5);margin-bottom:4px">Ảnh mẫu tham khảo</div>
+              <div style="width:100%;aspect-ratio:3/2;border-radius:8px;overflow:hidden;border:1px solid var(--gray2)">
+                <img src="${guideUrl}" alt="Ảnh mẫu ${escapeHtml(step.label)}" style="width:100%;height:100%;object-fit:cover;display:block">
+              </div>
+            </div>`
+          : ""
+      }`;
     this.initCamera();
   },
 
