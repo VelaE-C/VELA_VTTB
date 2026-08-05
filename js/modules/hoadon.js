@@ -84,7 +84,6 @@ const HoaDon = {
           <div class="field"><label>Ngày hóa đơn</label><input id="hd-invoice-date" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
           <div class="field"><label>Hạn thanh toán</label><input id="hd-due-date" type="date"></div>
           <div class="field"><label>% Thuế GTGT</label><input id="hd-vat" type="number" step="any" value="8"></div>
-          <div class="field"><label>Hạng mục</label><input id="hd-category" placeholder="VD: Vật tư thô"></div>
           <div class="field">
             <label>Số tiền NCC ghi trên hóa đơn (bắt buộc)</label>
             <input id="hd-stated" type="number" step="any" placeholder="0">
@@ -103,12 +102,10 @@ const HoaDon = {
     const invoiceDate = document.getElementById("hd-invoice-date").value;
     const dueDate = document.getElementById("hd-due-date").value;
     const vat = parseFloat(document.getElementById("hd-vat").value) || 0;
-    const category = document.getElementById("hd-category").value.trim();
     const stated = parseFloat(document.getElementById("hd-stated").value);
 
     if (!supplier) { toast("Chọn đúng 1 NCC từ danh sách gợi ý", "error"); return; }
     if (!invoiceDate) { toast("Nhập ngày hóa đơn", "error"); return; }
-    if (!category) { toast("Nhập hạng mục", "error"); return; }
     if (isNaN(stated) || stated <= 0) { toast("Nhập số tiền hóa đơn hợp lệ", "error"); return; }
 
     loading(true, "Đang tạo hóa đơn...");
@@ -117,7 +114,6 @@ const HoaDon = {
       .insert({
         project_id: projectId,
         supplier_id: supplier.id,
-        category_name: category,
         invoice_no: invoiceNo || null,
         invoice_date: invoiceDate,
         due_date: dueDate || null,
