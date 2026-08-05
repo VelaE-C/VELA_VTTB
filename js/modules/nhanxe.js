@@ -311,7 +311,8 @@ const NhanXe = {
     document.getElementById("nhanxe-body").innerHTML = `
       <div class="empty-state">
         <div class="empty-icon">✅</div>
-        <div>Đã chụp xong xe <strong>${escapeHtml(this.session.plate_number)}</strong> — chuyển sang hàng đợi "chờ nhập chi tiết" cho Phòng Vật Tư.</div>
+        <div>Đã chụp xong xe <strong>${escapeHtml(this.session.plate_number)}</strong> — mã phiếu <strong>${escapeHtml(this.session.receipt_code || "—")}</strong> — chuyển sang hàng đợi "chờ nhập chi tiết" cho Phòng Vật Tư.</div>
+        <div class="helper" style="margin-top:4px">Ghi lại mã phiếu này nếu cần đối chiếu sau — mỗi xe 1 mã riêng, không trùng.</div>
         <button class="btn btn-primary" style="margin-top:14px" onclick="NhanXe.render(document.getElementById('content-area'))">+ Nhận xe tiếp theo</button>
       </div>`;
   },
