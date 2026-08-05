@@ -103,6 +103,31 @@ function resizeImage(file, maxDim, quality) {
   });
 }
 
+// ---------- ĐỊNH DẠNG SỐ KHI GÕ (dấu "." ngăn hàng nghìn, dấu "," cho phần lẻ) ----------
+// Gắn vào 1 input để tự format lại giá trị mỗi khi người dùng gõ — dùng cho mọi ô
+// số lượng/đơn giá/số tiền trong toàn app để nhìn là biết ngay bao nhiêu.
+function attachNumberFormat(inputId) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  el.setAttribute("inputmode", "decimal");
+  el.type = "text";
+  el.addEventListener("input", () => {
+    let v = el.value.replace(/[^\d,]/g, "");
+    const parts = v.split(",");
+    let intPart = parts[0].replace(/^0+(?=\d)/, "");
+    intPart = intPart ? Number(intPart).toLocaleString("vi-VN") : "";
+    const decPart = parts.length > 1 ? "," + parts[1].slice(0, 2) : "";
+    el.value = intPart + decPart;
+  });
+}
+// Đọc lại giá trị số thật (float) từ 1 input đã format bằng attachNumberFormat()
+function parseFormattedNumber(inputId) {
+  const el = document.getElementById(inputId);
+  if (!el) return NaN;
+  const raw = el.value.replace(/\./g, "").replace(",", ".").trim();
+  return raw ? parseFloat(raw) : NaN;
+}
+
 // ---------- EMPTY STATE ----------
 function emptyStateHtml(text, actionHtml) {
   return `<div class="empty-state"><div class="empty-icon">📭</div><div>${escapeHtml(text)}</div>${actionHtml || ""}</div>`;
