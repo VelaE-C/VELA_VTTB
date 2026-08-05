@@ -59,7 +59,7 @@ const NhapChiTiet = {
     loading(true, "Đang tải thông tin phiên...");
     const [{ data: session, error: sErr }, { data: photos }, { data: lines }] = await Promise.all([
       sb.from("vehicle_receipts").select("*").eq("id", sessionId).single(),
-      sb.from("vehicle_receipt_photos").select("*").eq("vehicle_receipt_id", sessionId).order("step_order"),
+      sb.from("vehicle_receipt_photos").select("*").eq("vehicle_receipt_id", sessionId).order("step_order").order("page_number"),
       sb.from("goods_receipts").select("*, materials(material_code, material_name), suppliers(supplier_name)").eq("vehicle_receipt_id", sessionId),
     ]);
     if (sErr) { loading(false); toast("Lỗi: " + sErr.message, "error"); return; }
@@ -84,16 +84,19 @@ const NhapChiTiet = {
     const project = STATE.projects.find((p) => p.id === s.project_id);
     const body = document.getElementById("nct-body");
 
-    const photoLabels = { bien_so: "Biển số xe", phieu_giao_nhan: "Phiếu giao nhận", dau_xe: "Đầu xe", than_xe: "Thân xe" };
+    const photoLabels = { phieu_giao_nhan: "Phiếu giao nhận", dau_xe: "Đầu xe", sau_xe: "Sau lưng xe", hong_xe: "Bên hông xe" };
+    const pgnCount = this.currentPhotos.filter((p) => p.photo_type === "phieu_giao_nhan").length;
     const photoGallery = this.currentPhotos.length
       ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px">
           ${this.currentPhotos
-            .map(
-              (p) => `<div>
-                <img src="${p.signedUrl || ""}" style="width:100%;border-radius:8px;border:1px solid var(--gray2);aspect-ratio:4/3;object-fit:cover" alt="${escapeHtml(photoLabels[p.photo_type] || p.photo_type)}">
-                <div style="font-size:11px;color:var(--gray5);text-align:center;margin-top:4px">${escapeHtml(photoLabels[p.photo_type] || p.photo_type)}</div>
-              </div>`
-            )
+            .map((p) => {
+              const label = photoLabels[p.photo_type] || p.photo_type;
+              const pageSuffix = p.photo_type === "phieu_giao_nhan" && pgnCount > 1 ? ` (trang ${p.page_number})` : "";
+              return `<div>
+                <img src="${p.signedUrl || ""}" style="width:100%;border-radius:8px;border:1px solid var(--gray2);aspect-ratio:4/3;object-fit:cover" alt="${escapeHtml(label)}${pageSuffix}">
+                <div style="font-size:11px;color:var(--gray5);text-align:center;margin-top:4px">${escapeHtml(label)}${pageSuffix}</div>
+              </div>`;
+            })
             .join("")}
         </div>`
       : emptyStateHtml("Phiên này chưa có ảnh nào.");
