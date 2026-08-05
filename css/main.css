@@ -186,6 +186,18 @@ tr:nth-child(even) td { background: var(--gray1); }
 .empty-state .empty-icon { font-size: 32px; margin-bottom: 8px; }
 .mono { font-variant-numeric: tabular-nums; letter-spacing: .02em; }
 
+/* ============ Ô CHỌN CÓ TÌM KIẾM (ssel) ============ */
+.ssel { position: relative; }
+.ssel-dropdown {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #fff;
+  border: 1px solid var(--gray3); border-radius: 8px; max-height: 240px; overflow-y: auto;
+  z-index: 60; box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+}
+.ssel-group { font-size: 11px; text-transform: uppercase; color: var(--gray4); padding: 8px 10px 4px; letter-spacing: .03em; }
+.ssel-option { padding: 8px 10px; font-size: 13.5px; cursor: pointer; }
+.ssel-option:hover { background: var(--lblue); color: var(--blue); }
+.ssel-empty { padding: 12px 10px; font-size: 12.5px; color: var(--gray5); }
+
 /* ============ LOGIN ============ */
 #login-screen {
   min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--gray1);
