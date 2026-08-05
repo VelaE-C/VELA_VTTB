@@ -116,46 +116,70 @@ const NhapChiTiet = {
 
     let q = sb
       .from("goods_receipts")
-      .select("*, materials(material_code, material_name), suppliers(supplier_name), vehicle_receipts(plate_number, receipt_code)")
+      .select("*, suppliers(supplier_name), vehicle_receipts(plate_number, receipt_code)")
       .order("receipt_date", { ascending: false });
     if (fromDate) q = q.gte("receipt_date", fromDate);
     if (toDate) q = q.lte("receipt_date", toDate);
     if (projectId) q = q.eq("project_id", projectId);
     if (supplierId) q = q.eq("supplier_id", supplierId);
 
-    const { data, error } = await q.limit(200);
+    const { data, error } = await q.limit(1000);
     loading(false);
     if (error) { toast("Lỗi: " + error.message, "error"); return; }
 
-    const rows = (data || [])
-      .map((r) => {
-        const project = STATE.projects.find((p) => p.id === r.project_id);
-        return `<tr class="hist-row" style="cursor:pointer" onclick="NhapChiTiet.openSession('${r.vehicle_receipt_id}')">
-          <td class="mono">${escapeHtml(r.vehicle_receipts ? r.vehicle_receipts.receipt_code || "—" : "—")}</td>
-          <td>${fmtDate(r.receipt_date)}</td>
+    // Gộp nhiều dòng vật tư về đúng 1 xe (vehicle_receipt_id) — hiện tổng tiền cả xe
+    const byVehicle = {};
+    (data || []).forEach((r) => {
+      const key = r.vehicle_receipt_id || "no-vehicle-" + r.id;
+      if (!byVehicle[key]) {
+        byVehicle[key] = {
+          vehicleReceiptId: r.vehicle_receipt_id,
+          receiptCode: r.vehicle_receipts ? r.vehicle_receipts.receipt_code : null,
+          plateNumber: r.vehicle_receipts ? r.vehicle_receipts.plate_number : null,
+          projectId: r.project_id,
+          receiptDate: r.receipt_date,
+          lineCount: 0,
+          supplierNames: new Set(),
+          total: 0,
+        };
+      }
+      const v = byVehicle[key];
+      v.lineCount++;
+      if (r.suppliers) v.supplierNames.add(r.suppliers.supplier_name);
+      v.total += r.qty * r.unit_price;
+      if (r.receipt_date < v.receiptDate) v.receiptDate = r.receipt_date; // giữ ngày sớm nhất nếu lệch
+    });
+    const vehicles = Object.values(byVehicle).sort((a, b) => (a.receiptDate < b.receiptDate ? 1 : -1));
+
+    const rows = vehicles
+      .map((v) => {
+        const project = STATE.projects.find((p) => p.id === v.projectId);
+        const supplierNames = [...v.supplierNames];
+        const supplierDisplay = supplierNames.length > 1 ? `${escapeHtml(supplierNames[0])} +${supplierNames.length - 1} NCC khác` : escapeHtml(supplierNames[0] || "—");
+        return `<tr class="hist-row" style="cursor:pointer" onclick="NhapChiTiet.openSession('${v.vehicleReceiptId}')">
+          <td class="mono">${escapeHtml(v.receiptCode || "—")}</td>
+          <td>${fmtDate(v.receiptDate)}</td>
           <td>${escapeHtml(project ? project.project_name : "—")}</td>
-          <td class="hide-mobile">${escapeHtml(r.vehicle_receipts ? r.vehicle_receipts.plate_number : "—")}</td>
-          <td>${escapeHtml(r.materials ? r.materials.material_code + " — " + r.materials.material_name : "—")}</td>
-          <td>${escapeHtml(r.suppliers ? r.suppliers.supplier_name : "—")}</td>
-          <td class="num">${fmtNumber(r.qty)} ${escapeHtml(r.unit || "")}</td>
-          <td class="num">${fmtMoney(r.unit_price)}</td>
-          <td class="num">${fmtMoney(r.qty * r.unit_price)}</td>
+          <td class="hide-mobile">${escapeHtml(v.plateNumber || "—")}</td>
+          <td>${v.lineCount} loại vật tư</td>
+          <td>${supplierDisplay}</td>
+          <td class="num">${fmtMoney(v.total)}</td>
         </tr>`;
       })
       .join("");
 
-    const total = (data || []).reduce((sum, r) => sum + r.qty * r.unit_price, 0);
+    const grandTotal = vehicles.reduce((sum, v) => sum + v.total, 0);
 
     results.innerHTML = `
       <div class="card">
         <div class="card-header">
-          <h3>Kết quả (${(data || []).length}${(data || []).length === 200 ? " — chỉ hiện 200 dòng gần nhất, thu hẹp bộ lọc để xem hết" : ""})</h3>
-          <strong class="num">Tổng: ${fmtMoney(total)}</strong>
+          <h3>Kết quả (${vehicles.length} xe${(data || []).length === 1000 ? " — dữ liệu dòng vật tư đã chạm giới hạn, thu hẹp bộ lọc để chắc chắn không thiếu xe" : ""})</h3>
+          <strong class="num">Tổng: ${fmtMoney(grandTotal)}</strong>
         </div>
-        <div class="helper" style="margin-bottom:8px">Bấm vào 1 dòng để xem lại ảnh + toàn bộ vật tư của đúng xe đó.</div>
+        <div class="helper" style="margin-bottom:8px">Mỗi dòng là 1 xe (có thể chở nhiều loại vật tư) — bấm vào để xem chi tiết từng loại + ảnh.</div>
         ${
-          data && data.length
-            ? `<table><thead><tr><th>Mã phiếu</th><th>Ngày</th><th>Dự án</th><th class="hide-mobile">Biển số</th><th>Vật tư</th><th>NCC</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead><tbody>${rows}</tbody></table>`
+          vehicles.length
+            ? `<table><thead><tr><th>Mã phiếu</th><th>Ngày</th><th>Dự án</th><th class="hide-mobile">Biển số</th><th>Số loại vật tư</th><th>NCC</th><th>Tổng tiền</th></tr></thead><tbody>${rows}</tbody></table>`
             : emptyStateHtml("Không có dữ liệu khớp bộ lọc.")
         }
       </div>`;
