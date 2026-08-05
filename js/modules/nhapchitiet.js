@@ -1,7 +1,8 @@
 /* ============================================================
    js/modules/nhapchitiet.js
    A2b — Phòng Vật Tư xử lý hàng đợi các phiên xe đã chụp (A2a),
-   nhập Vật tư + NCC + SL + đơn giá (gợi ý giá gần nhất) + Hạng mục.
+   nhập Vật tư + NCC + SL + đơn giá (gợi ý giá gần nhất). Hạng mục
+   giờ tự suy ra từ vật tư đã chọn (Level 1/2), không nhập tay nữa.
    1 phiên xe (vehicle_receipt) có thể sinh nhiều dòng goods_receipts
    (1 xe chở nhiều loại vật tư).
    ============================================================ */
@@ -152,11 +153,6 @@ const NhapChiTiet = {
             </select>
           </div>
           <div class="field">
-            <label>Hạng mục</label>
-            <input id="nct-category" list="nct-category-list" placeholder="VD: Vật tư thô">
-            <datalist id="nct-category-list"></datalist>
-          </div>
-          <div class="field">
             <label>Đơn vị</label>
             <input id="nct-unit" readonly placeholder="Tự lấy theo vật tư đã chọn" style="background:var(--gray1);color:var(--gray5)">
           </div>
@@ -174,16 +170,8 @@ const NhapChiTiet = {
 
       <button class="btn btn-primary" style="margin-top:4px" onclick="NhapChiTiet.finishSession()">Hoàn tất xe này</button>`;
 
-    this.loadCategorySuggestions();
     attachNumberFormat("nct-qty");
     attachNumberFormat("nct-price");
-  },
-
-  async loadCategorySuggestions() {
-    const { data } = await sb.from("budgets").select("category_name").eq("project_id", this.currentSession.project_id);
-    const unique = [...new Set((data || []).map((b) => b.category_name))];
-    const dl = document.getElementById("nct-category-list");
-    if (dl) dl.innerHTML = unique.map((c) => `<option value="${escapeHtml(c)}">`).join("");
   },
 
   // Khi chọn vật tư -> tự đổ đơn vị mặc định (khóa, không sửa được) + gợi ý giá gần nhất
@@ -215,14 +203,12 @@ const NhapChiTiet = {
     const material = STATE.materials.find((m) => m.id === materialId);
     const supplierId = document.getElementById("nct-supplier").value;
     const supplier = STATE.suppliers.find((s) => s.id === supplierId);
-    const category = document.getElementById("nct-category").value.trim();
     const unit = document.getElementById("nct-unit").value.trim();
     const qty = parseFormattedNumber("nct-qty");
     const price = parseFormattedNumber("nct-price");
 
     if (!material) { toast("Chọn 1 vật tư trong danh mục", "error"); return; }
     if (!supplier) { toast("Chọn 1 NCC trong danh mục", "error"); return; }
-    if (!category) { toast("Nhập hạng mục", "error"); return; }
     if (!qty || qty <= 0) { toast("Nhập số lượng hợp lệ", "error"); return; }
     if (isNaN(price) || price < 0) { toast("Nhập đơn giá hợp lệ", "error"); return; }
 
@@ -234,7 +220,6 @@ const NhapChiTiet = {
         project_id: this.currentSession.project_id,
         supplier_id: supplier.id,
         material_id: material.id,
-        category_name: category,
         unit: unit || null,
         qty,
         unit_price: price,
