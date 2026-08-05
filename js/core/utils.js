@@ -186,6 +186,92 @@ function getSearchableSelectValue(containerId) {
   return el ? el.querySelector(".ssel-value").value : "";
 }
 
+// ---------- XEM ẢNH TOÀN MÀN HÌNH — zoom cuộn chuột/chụm ngón, kéo để di chuyển ----------
+function openImageViewer(url, altText) {
+  closeImageViewer();
+  const overlay = document.createElement("div");
+  overlay.id = "img-viewer-overlay";
+  overlay.style.cssText =
+    "position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:999;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none";
+  overlay.innerHTML = `
+    <button id="iv-close" aria-label="Đóng" style="position:absolute;top:16px;right:16px;z-index:2;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:18px;cursor:pointer">✕</button>
+    <div style="position:absolute;bottom:16px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.65);font-size:12px;z-index:2;text-align:center;padding:0 16px">Cuộn hoặc chụm 2 ngón để zoom · Kéo để di chuyển · Bấm đúp để phóng nhanh</div>
+    <img id="iv-img" src="${url}" alt="${escapeHtml(altText || "")}" draggable="false"
+      style="max-width:92%;max-height:88%;user-select:none;transform-origin:center center;cursor:grab;will-change:transform">`;
+  document.body.appendChild(overlay);
+
+  const img = overlay.querySelector("#iv-img");
+  let scale = 1, posX = 0, posY = 0, dragging = false, startX = 0, startY = 0, pinchDist = null, pinchScale = 1;
+
+  const apply = () => { img.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`; };
+  const clamp = (s) => Math.min(Math.max(s, 1), 5);
+  const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+  overlay.querySelector("#iv-close").onclick = closeImageViewer;
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeImageViewer(); });
+
+  overlay.addEventListener(
+    "wheel",
+    (e) => {
+      e.preventDefault();
+      scale = clamp(scale + (e.deltaY < 0 ? 0.18 : -0.18));
+      if (scale === 1) { posX = 0; posY = 0; }
+      apply();
+    },
+    { passive: false }
+  );
+
+  img.addEventListener("dblclick", () => {
+    scale = scale > 1 ? 1 : 2.5;
+    if (scale === 1) { posX = 0; posY = 0; }
+    apply();
+  });
+
+  img.addEventListener("mousedown", (e) => {
+    if (scale === 1) return;
+    dragging = true; startX = e.clientX - posX; startY = e.clientY - posY; img.style.cursor = "grabbing";
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    posX = e.clientX - startX; posY = e.clientY - startY; apply();
+  });
+  window.addEventListener("mouseup", () => { dragging = false; img.style.cursor = "grab"; });
+
+  overlay.addEventListener(
+    "touchstart",
+    (e) => {
+      if (e.touches.length === 2) { pinchDist = dist(e.touches); pinchScale = scale; }
+      else if (e.touches.length === 1 && scale > 1) { dragging = true; startX = e.touches[0].clientX - posX; startY = e.touches[0].clientY - posY; }
+    },
+    { passive: true }
+  );
+  overlay.addEventListener(
+    "touchmove",
+    (e) => {
+      if (e.touches.length === 2 && pinchDist) {
+        e.preventDefault();
+        scale = clamp(pinchScale * (dist(e.touches) / pinchDist));
+        apply();
+      } else if (e.touches.length === 1 && dragging) {
+        e.preventDefault();
+        posX = e.touches[0].clientX - startX; posY = e.touches[0].clientY - startY; apply();
+      }
+    },
+    { passive: false }
+  );
+  overlay.addEventListener("touchend", (e) => {
+    if (e.touches.length < 2) pinchDist = null;
+    if (e.touches.length === 0) dragging = false;
+  });
+
+  overlay._escHandler = (e) => { if (e.key === "Escape") closeImageViewer(); };
+  document.addEventListener("keydown", overlay._escHandler);
+}
+function closeImageViewer() {
+  const el = document.getElementById("img-viewer-overlay");
+  if (el) { if (el._escHandler) document.removeEventListener("keydown", el._escHandler); el.remove(); }
+}
+
 // ---------- EMPTY STATE ----------
 function emptyStateHtml(text, actionHtml) {
   return `<div class="empty-state"><div class="empty-icon">📭</div><div>${escapeHtml(text)}</div>${actionHtml || ""}</div>`;
