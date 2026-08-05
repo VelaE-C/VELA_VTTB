@@ -8,13 +8,26 @@
    ============================================================ */
 
 const NhapChiTiet = {
+  viewMode: "queue", // queue | history
   currentSession: null,
   currentPhotos: [],
   currentLines: [], // các goods_receipts đã lưu cho phiên đang mở
 
   async render(container) {
-    container.innerHTML = `<h2>Nhập chi tiết vật tư</h2><div id="nct-body"></div>`;
-    await this.renderQueue();
+    container.innerHTML = `
+      <h2>Nhập chi tiết vật tư</h2>
+      <div style="display:flex;gap:6px;margin-bottom:16px">
+        <button class="btn btn-sm ${this.viewMode === "queue" ? "btn-primary" : "btn-secondary"}" onclick="NhapChiTiet.switchView('queue')">Hàng đợi</button>
+        <button class="btn btn-sm ${this.viewMode === "history" ? "btn-primary" : "btn-secondary"}" onclick="NhapChiTiet.switchView('history')">Lịch sử đã nhập</button>
+      </div>
+      <div id="nct-body"></div>`;
+    if (this.viewMode === "history") await this.renderHistory();
+    else await this.renderQueue();
+  },
+
+  switchView(mode) {
+    this.viewMode = mode;
+    this.render(document.getElementById("content-area"));
   },
 
   async renderQueue() {
@@ -52,6 +65,84 @@ const NhapChiTiet = {
       <div class="card">
         <div class="card-header"><h3>Hàng đợi chờ nhập (${data.length})</h3></div>
         <table><thead><tr><th>Dự án</th><th>Biển số</th><th class="hide-mobile">Thời điểm nhận</th><th>Loại</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+      </div>`;
+  },
+
+  // ---------------- LỊCH SỬ ĐÃ NHẬP — filter ngày / dự án / NCC ----------------
+  async renderHistory() {
+    const body = document.getElementById("nct-body");
+    body.innerHTML = `
+      <div class="card">
+        <div class="form-grid">
+          <div class="field"><label>Từ ngày</label><input id="nct-hist-from" type="date"></div>
+          <div class="field"><label>Đến ngày</label><input id="nct-hist-to" type="date"></div>
+          <div class="field">
+            <label>Dự án</label>
+            <select id="nct-hist-project"><option value="">Tất cả dự án</option>${STATE.projects.map((p) => `<option value="${p.id}">${escapeHtml(p.project_name)}</option>`).join("")}</select>
+          </div>
+          <div class="field">
+            <label>Nhà cung cấp</label>
+            <select id="nct-hist-supplier"><option value="">Tất cả NCC</option>${STATE.suppliers.map((s) => `<option value="${s.id}">${escapeHtml(s.supplier_name)}</option>`).join("")}</select>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="NhapChiTiet.applyHistoryFilter()">Lọc</button>
+      </div>
+      <div id="nct-history-results"></div>`;
+    this.applyHistoryFilter();
+  },
+
+  async applyHistoryFilter() {
+    const results = document.getElementById("nct-history-results");
+    results.innerHTML = `<div class="card">${emptyStateHtml("Đang tải...")}</div>`;
+    loading(true, "Đang tải lịch sử đã nhập...");
+
+    const fromDate = document.getElementById("nct-hist-from").value;
+    const toDate = document.getElementById("nct-hist-to").value;
+    const projectId = document.getElementById("nct-hist-project").value;
+    const supplierId = document.getElementById("nct-hist-supplier").value;
+
+    let q = sb
+      .from("goods_receipts")
+      .select("*, materials(material_code, material_name), suppliers(supplier_name), vehicle_receipts(plate_number)")
+      .order("receipt_date", { ascending: false });
+    if (fromDate) q = q.gte("receipt_date", fromDate);
+    if (toDate) q = q.lte("receipt_date", toDate);
+    if (projectId) q = q.eq("project_id", projectId);
+    if (supplierId) q = q.eq("supplier_id", supplierId);
+
+    const { data, error } = await q.limit(200);
+    loading(false);
+    if (error) { toast("Lỗi: " + error.message, "error"); return; }
+
+    const rows = (data || [])
+      .map((r) => {
+        const project = STATE.projects.find((p) => p.id === r.project_id);
+        return `<tr>
+          <td>${fmtDate(r.receipt_date)}</td>
+          <td>${escapeHtml(project ? project.project_name : "—")}</td>
+          <td class="hide-mobile">${escapeHtml(r.vehicle_receipts ? r.vehicle_receipts.plate_number : "—")}</td>
+          <td>${escapeHtml(r.materials ? r.materials.material_code + " — " + r.materials.material_name : "—")}</td>
+          <td>${escapeHtml(r.suppliers ? r.suppliers.supplier_name : "—")}</td>
+          <td class="num">${fmtNumber(r.qty)} ${escapeHtml(r.unit || "")}</td>
+          <td class="num">${fmtMoney(r.unit_price)}</td>
+          <td class="num">${fmtMoney(r.qty * r.unit_price)}</td>
+        </tr>`;
+      })
+      .join("");
+
+    const total = (data || []).reduce((sum, r) => sum + r.qty * r.unit_price, 0);
+
+    results.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <h3>Kết quả (${(data || []).length}${(data || []).length === 200 ? " — chỉ hiện 200 dòng gần nhất, thu hẹp bộ lọc để xem hết" : ""})</h3>
+          <strong class="num">Tổng: ${fmtMoney(total)}</strong>
+        </div>
+        ${
+          data && data.length
+            ? `<table><thead><tr><th>Ngày</th><th>Dự án</th><th class="hide-mobile">Biển số</th><th>Vật tư</th><th>NCC</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead><tbody>${rows}</tbody></table>`
+            : emptyStateHtml("Không có dữ liệu khớp bộ lọc.")
+        }
       </div>`;
   },
 
