@@ -80,7 +80,7 @@ function showLoginScreen() {
   document.body.innerHTML = `
     <div id="login-screen">
       <div class="login-box">
-        <div class="brand-mark">VT</div>
+        <img src="https://raw.githubusercontent.com/VelaE-C/VELA_VTTB/main/Logo%20VELA%20E%26C-01.png" alt="VELA E&amp;C" style="height:84px;width:auto;display:block;margin:0 auto 14px">
         <h2>VELA_VTTB</h2>
         <div class="sub">Đăng nhập để tiếp tục</div>
         <div class="field">
@@ -110,8 +110,8 @@ function renderShell() {
       <div id="topbar">
         <button id="menu-toggle" onclick="toggleMobileMenu()">☰</button>
         <div class="brand">
-          <div class="brand-mark">VT</div>
-          <span>VELA<span class="brand-name">_VTTB</span></span>
+          <img src="https://raw.githubusercontent.com/VelaE-C/VELA_VTTB/main/LOGO%20VELA_logo%20ngang%20.png" alt="VELA E&amp;C" style="height:32px;width:auto;display:block">
+          <span class="hide-mobile" style="color:rgba(255,255,255,0.7);font-size:12.5px;margin-left:4px">VTTB</span>
         </div>
         <div class="spacer"></div>
         <select id="project-filter" onchange="onProjectFilterChange()"></select>
