@@ -221,7 +221,7 @@ const NhapChiTiet = {
               const label = photoLabels[p.photo_type] || p.photo_type;
               const pageSuffix = p.photo_type === "phieu_giao_nhan" && pgnCount > 1 ? ` (trang ${p.page_number})` : "";
               return `<div>
-                <img src="${p.signedUrl || ""}" style="width:100%;border-radius:8px;border:1px solid var(--gray2);aspect-ratio:4/3;object-fit:cover" alt="${escapeHtml(label)}${pageSuffix}">
+                <img src="${p.signedUrl || ""}" style="width:100%;border-radius:8px;border:1px solid var(--gray2);aspect-ratio:4/3;object-fit:cover;cursor:zoom-in" alt="${escapeHtml(label)}${pageSuffix}" onclick="openImageViewer('${p.signedUrl}', '${escapeHtml(label)}')">
                 <div style="font-size:11px;color:var(--gray5);text-align:center;margin-top:4px">${escapeHtml(label)}${pageSuffix}</div>
               </div>`;
             })
