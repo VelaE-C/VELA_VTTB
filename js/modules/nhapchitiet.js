@@ -5,6 +5,11 @@
    giờ tự suy ra từ vật tư đã chọn (Level 1/2), không nhập tay nữa.
    1 phiên xe (vehicle_receipt) có thể sinh nhiều dòng goods_receipts
    (1 xe chở nhiều loại vật tư).
+
+   Chi tiết phiên hiện dạng MODAL nổi (không thay nội dung trang) —
+   đóng lại tự refresh đúng danh sách đang xem (hàng đợi/lịch sử).
+   Vật tư/NCC dùng ô tìm kiếm (ssel) thay <select> thường, có nhóm
+   ưu tiên "Đã dùng ở dự án này" đẩy lên đầu danh sách.
    ============================================================ */
 
 const NhapChiTiet = {
@@ -12,6 +17,8 @@ const NhapChiTiet = {
   currentSession: null,
   currentPhotos: [],
   currentLines: [], // các goods_receipts đã lưu cho phiên đang mở
+  priorityMaterialIds: [],
+  prioritySupplierIds: [],
 
   async render(container) {
     container.innerHTML = `
@@ -28,6 +35,11 @@ const NhapChiTiet = {
   switchView(mode) {
     this.viewMode = mode;
     this.render(document.getElementById("content-area"));
+  },
+
+  refreshCurrentList() {
+    if (this.viewMode === "history") this.applyHistoryFilter();
+    else this.renderQueue();
   },
 
   async renderQueue() {
@@ -69,7 +81,6 @@ const NhapChiTiet = {
       </div>`;
   },
 
-  // ---------------- LỊCH SỬ ĐÃ NHẬP — filter ngày / dự án / NCC ----------------
   async renderHistory() {
     const body = document.getElementById("nct-body");
     body.innerHTML = `
@@ -94,6 +105,7 @@ const NhapChiTiet = {
 
   async applyHistoryFilter() {
     const results = document.getElementById("nct-history-results");
+    if (!results) return;
     results.innerHTML = `<div class="card">${emptyStateHtml("Đang tải...")}</div>`;
     loading(true, "Đang tải lịch sử đã nhập...");
 
@@ -149,7 +161,6 @@ const NhapChiTiet = {
       </div>`;
   },
 
-  // ---------------- MỞ 1 PHIÊN ĐỂ NHẬP CHI TIẾT ----------------
   async openSession(sessionId) {
     loading(true, "Đang tải thông tin phiên...");
     const [{ data: session, error: sErr }, { data: photos }, { data: lines }] = await Promise.all([
@@ -159,25 +170,47 @@ const NhapChiTiet = {
     ]);
     if (sErr) { loading(false); toast("Lỗi: " + sErr.message, "error"); return; }
 
-    // Ảnh lưu ở bucket private -> phải tạo signed URL mới xem được, không dùng public URL trực tiếp
     const photosWithUrl = await Promise.all(
       (photos || []).map(async (p) => {
         const { data: signed } = await sb.storage.from(CFG.STORAGE_BUCKET_VEHICLE_PHOTOS).createSignedUrl(p.file_url, 3600);
         return { ...p, signedUrl: signed ? signed.signedUrl : null };
       })
     );
+
+    const [{ data: usedMaterials }, { data: usedSuppliers }] = await Promise.all([
+      sb.from("goods_receipts").select("material_id").eq("project_id", session.project_id),
+      sb.from("goods_receipts").select("supplier_id").eq("project_id", session.project_id),
+    ]);
     loading(false);
 
     this.currentSession = session;
     this.currentPhotos = photosWithUrl;
     this.currentLines = lines || [];
-    this.renderSessionDetail();
+    this.priorityMaterialIds = [...new Set((usedMaterials || []).map((r) => r.material_id))];
+    this.prioritySupplierIds = [...new Set((usedSuppliers || []).map((r) => r.supplier_id))];
+    this.openSessionModal();
   },
 
-  async renderSessionDetail() {
+  openSessionModal() {
+    openModal({
+      title: "Chi tiết phiên nhận xe",
+      bodyHtml: this.buildSessionBodyHtml(),
+      wide: true,
+      onClose: () => this.refreshCurrentList(),
+    });
+    this.initSessionFormWidgets();
+  },
+
+  refreshSessionModal() {
+    const modalBody = document.querySelector("#active-modal .modal-body");
+    if (!modalBody) return;
+    modalBody.innerHTML = this.buildSessionBodyHtml();
+    this.initSessionFormWidgets();
+  },
+
+  buildSessionBodyHtml() {
     const s = this.currentSession;
     const project = STATE.projects.find((p) => p.id === s.project_id);
-    const body = document.getElementById("nct-body");
 
     const photoLabels = { phieu_giao_nhan: "Phiếu giao nhận", dau_xe: "Đầu xe", sau_xe: "Sau lưng xe", hong_xe: "Bên hông xe" };
     const pgnCount = this.currentPhotos.filter((p) => p.photo_type === "phieu_giao_nhan").length;
@@ -213,9 +246,8 @@ const NhapChiTiet = {
         </tbody></table>`
       : emptyStateHtml("Chưa có dòng vật tư nào — thêm ít nhất 1 dòng bên dưới.");
 
-    body.innerHTML = `
-      <button class="btn btn-secondary btn-sm" onclick="NhapChiTiet.render(document.getElementById('content-area'))">← Quay lại hàng đợi</button>
-      <div class="card" style="margin-top:12px">
+    return `
+      <div class="card">
         <div class="card-header">
           <h3>${escapeHtml(project ? project.project_name : "")} — Biển số ${escapeHtml(s.plate_number)} <span class="mono" style="font-weight:400;color:var(--gray5)">(${escapeHtml(s.receipt_code || "—")})</span></h3>
           ${s.entry_method === "manual_backfill" ? '<span class="badge badge-progress">Nhập bù — không chụp trực tiếp</span>' : ""}
@@ -234,17 +266,11 @@ const NhapChiTiet = {
         <div class="form-grid">
           <div class="field">
             <label>Vật tư</label>
-            <select id="nct-material" onchange="NhapChiTiet.onMaterialChange()">
-              <option value="">— Chọn vật tư —</option>
-              ${this.materialSelectOptions()}
-            </select>
+            ${searchableSelectHtml("nct-material-ssel", "Gõ mã hoặc tên vật tư...")}
           </div>
           <div class="field">
             <label>Nhà cung cấp</label>
-            <select id="nct-supplier">
-              <option value="">— Chọn NCC —</option>
-              ${STATE.suppliers.map((sp) => `<option value="${sp.id}">${escapeHtml(sp.supplier_name)}</option>`).join("")}
-            </select>
+            ${searchableSelectHtml("nct-supplier-ssel", "Gõ tên NCC...")}
           </div>
           <div class="field">
             <label>Đơn vị</label>
@@ -263,52 +289,64 @@ const NhapChiTiet = {
       </div>
 
       <button class="btn btn-primary" style="margin-top:4px" onclick="NhapChiTiet.finishSession()">Hoàn tất xe này</button>`;
-
-    attachNumberFormat("nct-qty");
-    attachNumberFormat("nct-price");
   },
 
-  // Khi chọn vật tư -> tự đổ đơn vị mặc định (khóa, không sửa được) + gợi ý giá gần nhất
-  // Gom vật tư theo Level 1 > Level 2 dưới dạng <optgroup> — dễ tìm hơn khi danh sách dài
-  materialSelectOptions() {
+  initSessionFormWidgets() {
+    attachNumberFormat("nct-qty");
+    attachNumberFormat("nct-price");
+    initSearchableSelect("nct-material-ssel", this.materialGroupedOptions(), { onSelect: () => this.onMaterialChange() });
+    initSearchableSelect("nct-supplier-ssel", this.supplierGroupedOptions());
+  },
+
+  materialGroupedOptions() {
     const l2ById = {};
     STATE.materialGroupsL2.forEach((g) => { l2ById[g.id] = g; });
     const l1ById = {};
     STATE.materialGroupsL1.forEach((g) => { l1ById[g.id] = g; });
 
-    const groups = {}; // key: "l1_name|||l2_name" -> [materials]
+    const label = (m) => `${m.material_code} — ${m.material_name}`;
+    const groups = [];
+
+    const priority = STATE.materials.filter((m) => this.priorityMaterialIds.includes(m.id));
+    if (priority.length) {
+      groups.push({ groupLabel: "Đã dùng ở dự án này", items: priority.map((m) => ({ value: m.id, label: label(m) })) });
+    }
+
+    const byGroup = {};
     const noGroup = [];
     STATE.materials.forEach((m) => {
       const l2 = l2ById[m.l2_id];
       const l1 = l2 ? l1ById[l2.l1_id] : null;
       if (!l2 || !l1) { noGroup.push(m); return; }
-      const key = `${l1.name}|||${l2.name}`;
-      groups[key] = groups[key] || [];
-      groups[key].push(m);
+      const key = `${l1.name} › ${l2.name}`;
+      byGroup[key] = byGroup[key] || [];
+      byGroup[key].push(m);
     });
+    Object.keys(byGroup)
+      .sort()
+      .forEach((key) => {
+        groups.push({ groupLabel: key, items: byGroup[key].sort((a, b) => a.material_code.localeCompare(b.material_code)).map((m) => ({ value: m.id, label: label(m) })) });
+      });
+    if (noGroup.length) groups.push({ groupLabel: "Chưa gán nhóm", items: noGroup.map((m) => ({ value: m.id, label: label(m) })) });
 
-    const sortedKeys = Object.keys(groups).sort();
-    let html = sortedKeys
-      .map((key) => {
-        const [l1name, l2name] = key.split("|||");
-        const opts = groups[key]
-          .sort((a, b) => a.material_code.localeCompare(b.material_code))
-          .map((m) => `<option value="${m.id}">${escapeHtml(m.material_code)} — ${escapeHtml(m.material_name)}</option>`)
-          .join("");
-        return `<optgroup label="${escapeHtml(l1name)} › ${escapeHtml(l2name)}">${opts}</optgroup>`;
-      })
-      .join("");
+    return groups;
+  },
 
-    if (noGroup.length) {
-      html += `<optgroup label="Chưa gán nhóm (vào Danh mục gán trước)">${noGroup
-        .map((m) => `<option value="${m.id}">${escapeHtml(m.material_code)} — ${escapeHtml(m.material_name)}</option>`)
-        .join("")}</optgroup>`;
+  supplierGroupedOptions() {
+    const groups = [];
+    const priority = STATE.suppliers.filter((s) => this.prioritySupplierIds.includes(s.id));
+    if (priority.length) {
+      groups.push({ groupLabel: "Đã giao ở dự án này", items: priority.map((s) => ({ value: s.id, label: s.supplier_name })) });
     }
-    return html;
+    groups.push({
+      groupLabel: "Tất cả NCC",
+      items: [...STATE.suppliers].sort((a, b) => a.supplier_name.localeCompare(b.supplier_name)).map((s) => ({ value: s.id, label: s.supplier_name })),
+    });
+    return groups;
   },
 
   async onMaterialChange() {
-    const materialId = document.getElementById("nct-material").value;
+    const materialId = getSearchableSelectValue("nct-material-ssel");
     const material = STATE.materials.find((m) => m.id === materialId);
     const unitEl = document.getElementById("nct-unit");
     if (!material) { unitEl.value = ""; return; }
@@ -331,9 +369,9 @@ const NhapChiTiet = {
   },
 
   async addLine() {
-    const materialId = document.getElementById("nct-material").value;
+    const materialId = getSearchableSelectValue("nct-material-ssel");
     const material = STATE.materials.find((m) => m.id === materialId);
-    const supplierId = document.getElementById("nct-supplier").value;
+    const supplierId = getSearchableSelectValue("nct-supplier-ssel");
     const supplier = STATE.suppliers.find((s) => s.id === supplierId);
     const unit = document.getElementById("nct-unit").value.trim();
     const qty = parseFormattedNumber("nct-qty");
@@ -363,8 +401,10 @@ const NhapChiTiet = {
     if (error) { toast("Lỗi: " + error.message, "error"); return; }
 
     this.currentLines.push(data);
+    if (!this.priorityMaterialIds.includes(material.id)) this.priorityMaterialIds.push(material.id);
+    if (!this.prioritySupplierIds.includes(supplier.id)) this.prioritySupplierIds.push(supplier.id);
     toast("Đã thêm dòng vật tư!", "success");
-    this.renderSessionDetail();
+    this.refreshSessionModal();
   },
 
   async deleteLine(lineId) {
@@ -375,7 +415,7 @@ const NhapChiTiet = {
     if (error) { toast("Lỗi: " + error.message, "error"); return; }
     this.currentLines = this.currentLines.filter((l) => l.id !== lineId);
     toast("Đã xóa!", "success");
-    this.renderSessionDetail();
+    this.refreshSessionModal();
   },
 
   async finishSession() {
@@ -384,8 +424,8 @@ const NhapChiTiet = {
     const { error } = await sb.from("vehicle_receipts").update({ status: "detailed" }).eq("id", this.currentSession.id);
     loading(false);
     if (error) { toast("Lỗi: " + error.message, "error"); return; }
-    toast("Đã hoàn tất phiên — chuyển phiên tiếp theo trong hàng đợi.", "success");
-    this.render(document.getElementById("content-area"));
+    toast("Đã hoàn tất phiên!", "success");
+    closeModal();
   },
 };
 
