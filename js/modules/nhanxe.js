@@ -17,10 +17,10 @@
    ============================================================ */
 
 const PHOTO_STEPS = [
-  { type: "phieu_giao_nhan", order: 1, label: "Phiếu giao nhận", fullSize: true },
-  { type: "dau_xe", order: 2, label: "Đầu xe", fullSize: false },
-  { type: "sau_xe", order: 3, label: "Sau lưng xe", fullSize: false },
-  { type: "hong_xe", order: 4, label: "Bên hông xe", fullSize: false },
+  { type: "phieu_giao_nhan", order: 1, label: "Phiếu giao nhận", fullSize: true, multi: true, maxPages: 3 },
+  { type: "dau_xe", order: 2, label: "Đầu xe", fullSize: false, multi: false },
+  { type: "sau_xe", order: 3, label: "Sau lưng xe", fullSize: false, multi: false },
+  { type: "hong_xe", order: 4, label: "Bên hông xe", fullSize: false, multi: false },
 ];
 
 // Ảnh mẫu hướng dẫn cho từng bước — dán link RAW (không phải link xem trên GitHub,
@@ -39,11 +39,13 @@ const NhanXe = {
   stepIndex: 0,
   stream: null,
   uploadedTypes: new Set(),
+  pageCount: 0, // số trang đã chụp của bước hiện tại (chỉ có ý nghĩa với bước multi:true)
 
   async render(container) {
     this.session = null;
     this.stepIndex = 0;
     this.uploadedTypes = new Set();
+    this.pageCount = 0;
     this.stopCamera();
 
     // Chỉ role "manager" (Phòng Vật Tư Thiết Bị) được nhập bù — theo yêu cầu, không mở cho admin ở UI
@@ -154,6 +156,8 @@ const NhanXe = {
     this.session = data;
     this.stepIndex = 0;
     this.uploadedTypes = new Set();
+    this.pageCount = 0;
+    this.backfillPageCounts = {};
     if (isBackfill) this.renderBackfillUpload();
     else this.renderCaptureStep();
   },
@@ -163,8 +167,10 @@ const NhanXe = {
     const step = PHOTO_STEPS[this.stepIndex];
     const guideUrl = GUIDE_IMAGES[step.type];
     const body = document.getElementById("nhanxe-body");
+    const pageBadge = step.multi ? ` <span class="badge badge-info">Trang ${this.pageCount + 1}/${step.maxPages}</span>` : "";
     body.innerHTML = `
-      <h3>Bước ${this.stepIndex + 1}/4 — ${step.label}${step.fullSize ? ' <span class="badge badge-info">Giữ chất lượng gốc</span>' : ""}</h3>
+      <h3>Bước ${this.stepIndex + 1}/4 — ${step.label}${step.fullSize ? ' <span class="badge badge-info">Giữ chất lượng gốc</span>' : ""}${pageBadge}</h3>
+      ${step.multi ? `<div class="helper" style="margin-bottom:8px">Nhiều đơn hàng có thể có nhiều trang phiếu giao nhận — chụp lần lượt từng trang, tối đa ${step.maxPages} trang.</div>` : ""}
 
       <div style="position:relative;width:100%;border-radius:8px;overflow:hidden;background:#000">
         <video id="nx-video" autoplay playsinline muted style="width:100%;display:block;max-height:360px;object-fit:cover"></video>
@@ -190,6 +196,32 @@ const NhanXe = {
           : ""
       }`;
     this.initCamera();
+  },
+
+  // Sau khi chụp xong 1 trang của bước multi (Phiếu giao nhận) — hỏi chụp thêm hay xong
+  renderMultiConfirm() {
+    const step = PHOTO_STEPS[this.stepIndex];
+    this.stopCamera();
+    const body = document.getElementById("nhanxe-body");
+    const reachedMax = this.pageCount >= step.maxPages;
+    body.innerHTML = `
+      <h3>Bước ${this.stepIndex + 1}/4 — ${step.label}</h3>
+      <div class="empty-state">
+        <div class="empty-icon">✅</div>
+        <div>Đã chụp <strong>${this.pageCount}/${step.maxPages}</strong> trang Phiếu giao nhận.</div>
+      </div>
+      <div class="btn-row" style="display:flex;gap:10px;justify-content:center;margin-top:8px">
+        ${reachedMax ? "" : `<button class="btn btn-secondary" onclick="NhanXe.renderCaptureStep()">+ Chụp thêm trang</button>`}
+        <button class="btn btn-primary" onclick="NhanXe.confirmMultiDone()">Xác nhận xong, tiếp tục</button>
+      </div>
+      ${reachedMax ? `<div class="helper" style="text-align:center;margin-top:8px">Đã đạt tối đa ${step.maxPages} trang.</div>` : ""}`;
+  },
+
+  confirmMultiDone() {
+    this.pageCount = 0;
+    this.stepIndex++;
+    if (this.stepIndex >= PHOTO_STEPS.length) this.finishCapture();
+    else this.renderCaptureStep();
   },
 
   async initCamera() {
@@ -232,23 +264,29 @@ const NhanXe = {
 
   async uploadPhoto(blob, step) {
     const btn = document.getElementById("nx-btn-capture");
-    const inner = document.getElementById("nx-btn-inner");
     const statusEl = document.getElementById("nx-status-text");
     if (btn) { btn.disabled = true; btn.style.opacity = "0.5"; }
     if (statusEl) statusEl.innerHTML = `<span style="color:var(--gray5)">Đang gửi...</span>`;
 
-    const path = `${this.session.project_id}/${this.session.id}/${step.type}.jpg`;
+    const pageNumber = step.multi ? this.pageCount + 1 : 1;
+    const path = `${this.session.project_id}/${this.session.id}/${step.type}_${pageNumber}.jpg`;
     const { error: upErr } = await sb.storage.from(CFG.STORAGE_BUCKET_VEHICLE_PHOTOS).upload(path, blob, { contentType: "image/jpeg", upsert: true });
     if (upErr) { this.showUploadRetry(step, "Lỗi mạng khi tải ảnh lên: " + upErr.message); return; }
     const { error: dbErr } = await sb.from("vehicle_receipt_photos").insert({
-      vehicle_receipt_id: this.session.id, photo_type: step.type, step_order: step.order, file_url: path,
+      vehicle_receipt_id: this.session.id, photo_type: step.type, step_order: step.order, page_number: pageNumber, file_url: path,
     });
     if (dbErr) { this.showUploadRetry(step, "Lỗi lưu thông tin ảnh: " + dbErr.message); return; }
 
     this.uploadedTypes.add(step.type);
-    this.stepIndex++;
-    if (this.stepIndex >= PHOTO_STEPS.length) this.finishCapture();
-    else this.renderCaptureStep();
+
+    if (step.multi) {
+      this.pageCount++;
+      this.renderMultiConfirm();
+    } else {
+      this.stepIndex++;
+      if (this.stepIndex >= PHOTO_STEPS.length) this.finishCapture();
+      else this.renderCaptureStep();
+    }
   },
 
   showUploadRetry(step, message) {
@@ -279,18 +317,25 @@ const NhanXe = {
     const body = document.getElementById("nhanxe-body");
     body.innerHTML = `
       <h3>Tải ảnh đã nhận được (${this.session.plate_number})</h3>
-      <div class="helper" style="margin-bottom:10px">Bắt buộc nên có ảnh Phiếu giao nhận (giữ nguyên chất lượng gốc để đối chiếu) — các ảnh khác nếu có thì tải thêm, không bắt buộc đủ 4 như luồng chụp trực tiếp.</div>
+      <div class="helper" style="margin-bottom:10px">Bắt buộc nên có ảnh Phiếu giao nhận (giữ nguyên chất lượng gốc để đối chiếu, có thể nhiều trang) — các ảnh khác nếu có thì tải thêm, không bắt buộc đủ 4 như luồng chụp trực tiếp.</div>
       <div id="nx-backfill-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
         ${PHOTO_STEPS.map((s) => this.backfillRowHtml(s)).join("")}
       </div>
       <button class="btn btn-primary" onclick="NhanXe.finishCapture()">Hoàn tất phiên nhập bù</button>`;
   },
 
+  backfillPageCount(type) {
+    return this.backfillPageCounts && this.backfillPageCounts[type] ? this.backfillPageCounts[type] : 0;
+  },
+
   backfillRowHtml(step) {
+    const count = this.backfillPageCount(step.type);
     const done = this.uploadedTypes.has(step.type);
+    const canAddMore = step.multi ? count < step.maxPages : !done;
+    const countLabel = step.multi && count > 0 ? ` <span class="badge badge-done">${count}/${step.maxPages} trang</span>` : done ? '<span class="badge badge-done">Đã tải</span>' : "";
     return `<div style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--gray2);border-radius:6px">
-      <span style="flex:1">${escapeHtml(step.label)}${step.fullSize ? ' <span class="badge badge-info">Giữ chất lượng gốc</span>' : ""}</span>
-      ${done ? '<span class="badge badge-done">Đã tải</span>' : `<input type="file" accept="image/*" style="width:auto" onchange="NhanXe.backfillFileSelected('${step.type}', this)">`}
+      <span style="flex:1">${escapeHtml(step.label)}${step.fullSize ? ' <span class="badge badge-info">Giữ chất lượng gốc</span>' : ""}${countLabel}</span>
+      ${canAddMore ? `<input type="file" accept="image/*" style="width:auto" onchange="NhanXe.backfillFileSelected('${step.type}', this)">` : ""}
     </div>`;
   },
 
@@ -299,17 +344,20 @@ const NhanXe = {
     if (!file) return;
     loading(true, "Đang tải ảnh lên...");
     const step = PHOTO_STEPS.find((s) => s.type === type);
+    this.backfillPageCounts = this.backfillPageCounts || {};
+    const pageNumber = step.multi ? this.backfillPageCount(type) + 1 : 1;
     try {
       // Phiếu giao nhận: upload nguyên file gốc, KHÔNG resize, để giữ đối chiếu được số liệu
       const blob = step.fullSize ? file : await resizeImage(file, CFG.IMAGE_RESIZE.maxDim, CFG.IMAGE_RESIZE.quality);
-      const path = `${this.session.project_id}/${this.session.id}/${type}.jpg`;
+      const path = `${this.session.project_id}/${this.session.id}/${type}_${pageNumber}.jpg`;
       const { error: upErr } = await sb.storage.from(CFG.STORAGE_BUCKET_VEHICLE_PHOTOS).upload(path, blob, { contentType: file.type || "image/jpeg", upsert: true });
       if (upErr) throw upErr;
       const { error: dbErr } = await sb.from("vehicle_receipt_photos").insert({
-        vehicle_receipt_id: this.session.id, photo_type: type, step_order: step.order, file_url: path,
+        vehicle_receipt_id: this.session.id, photo_type: type, step_order: step.order, page_number: pageNumber, file_url: path,
       });
       if (dbErr) throw dbErr;
       this.uploadedTypes.add(type);
+      this.backfillPageCounts[type] = pageNumber;
       loading(false);
       this.renderBackfillUpload();
     } catch (e) {
