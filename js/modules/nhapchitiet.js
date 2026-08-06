@@ -220,6 +220,7 @@ const NhapChiTiet = {
       title: "Chi tiết phiên nhận xe",
       bodyHtml: this.buildSessionBodyHtml(),
       wide: true,
+      preventBackdropClose: true, // đang nhập dở, tránh lỡ tay bấm ra ngoài mất phiên
       onClose: () => this.refreshCurrentList(),
     });
     this.initSessionFormWidgets();
