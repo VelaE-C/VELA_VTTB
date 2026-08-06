@@ -61,6 +61,10 @@ const NganSach = {
           <td>${moneyCell}</td>
           <td>${qtyCell}</td>
           <td>${r.alert_level ? budgetAlertBadge(r.alert_level) : ""}</td>
+          <td class="table-actions">
+            ${r.level === 3 && this.canWrite() ? `<button class="btn btn-sm btn-secondary" onclick='NganSach.openModal(${JSON.stringify(r).replace(/'/g, "&#39;")})'>Sửa</button>` : ""}
+            ${r.level === 3 && STATE.role === "admin" ? `<button class="btn btn-sm btn-secondary" onclick="NganSach.deleteRow('${r.project_id}', '${r.material_code}')">Xóa</button>` : ""}
+          </td>
         </tr>`;
       })
       .join("");
@@ -73,11 +77,11 @@ const NganSach = {
         </div>
         <div class="helper" style="margin-bottom:10px">
           Chỉ nhập ở cấp vật tư cụ thể (Level 3) — Level 1/Level 2 hiện ở đây là <strong>tự cộng dồn</strong> từ các vật tư bên dưới,
-          không nhập tay. Thiếu vật tư nào thì tạo 1 vật tư dạng "X khác" ở Danh mục trong đúng nhóm để có chỗ điền số.
+          không nhập tay, nên không có nút Sửa/Xóa. Thiếu vật tư nào thì tạo 1 vật tư dạng "X khác" ở Danh mục trong đúng nhóm để có chỗ điền số.
         </div>
         ${
           data && data.length
-            ? `<table><thead><tr><th>Dự án</th><th>Nhóm / Vật tư</th><th>Tiền (đã dùng / ngân sách)</th><th>SL (đã nhận / dự trù)</th><th>Trạng thái</th></tr></thead><tbody>${rows}</tbody></table>`
+            ? `<table><thead><tr><th>Dự án</th><th>Nhóm / Vật tư</th><th>Tiền (đã dùng / ngân sách)</th><th>SL (đã nhận / dự trù)</th><th>Trạng thái</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
             : emptyStateHtml("Chưa có phân bổ nào.")
         }
       </div>`;
@@ -87,33 +91,50 @@ const NganSach = {
     return { ok: "var(--green)", warning_70: "var(--amber)", critical_85: "var(--orange)", over_budget: "var(--red)" }[level] || "var(--gray3)";
   },
 
-  openModal() {
+  openModal(existing) {
     if (!STATE.materials.length) { toast("Chưa có vật tư nào — tạo ở Danh mục trước", "error"); return; }
+    const isEdit = !!existing;
     openModal({
-      title: "Thêm vật tư vào ngân sách",
+      title: isEdit ? `Sửa — ${existing.material_code}` : "Thêm vật tư vào ngân sách",
       bodyHtml: `
         <div class="field">
           <label>Dự án</label>
-          <select id="ns-project">${STATE.projects.map((p) => `<option value="${p.id}">${escapeHtml(p.project_name)}</option>`).join("")}</select>
+          <select id="ns-project" ${isEdit ? "disabled" : ""}>${STATE.projects.map((p) => `<option value="${p.id}" ${isEdit && p.project_name === existing.project_name ? "selected" : ""}>${escapeHtml(p.project_name)}</option>`).join("")}</select>
+          ${isEdit ? '<div class="helper">Không đổi được dự án khi sửa — muốn chuyển dự án khác thì xóa dòng này, thêm mới ở dự án đúng.</div>' : ""}
         </div>
         <div class="field">
           <label>Vật tư</label>
           ${searchableSelectHtml("ns-material-ssel", "Gõ mã hoặc tên vật tư... (chưa có thì tạo 'X khác' ở Danh mục trước)")}
+          ${isEdit ? '<div class="helper">Không đổi được vật tư khi sửa — muốn đổi thì xóa dòng này, thêm mới đúng vật tư.</div>' : ""}
         </div>
-        <div class="field"><label>Số lượng dự trù</label><input id="ns-qty" placeholder="0"></div>
-        <div class="field"><label>Đơn giá dự toán</label><input id="ns-price" placeholder="0"></div>
+        <div class="field"><label>Số lượng dự trù</label><input id="ns-qty" placeholder="0" value="${isEdit ? fmtNumber(existing.planned_qty) : ""}"></div>
+        <div class="field"><label>Đơn giá dự toán</label><input id="ns-price" placeholder="0" value="${isEdit && existing.budget_unit_price != null ? fmtNumber(existing.budget_unit_price) : ""}"></div>
         <div class="field">
           <label>Thành tiền (tự tính)</label>
-          <input id="ns-amount-preview" disabled placeholder="0 đ" style="background:var(--gray1);color:var(--gray7);font-weight:600">
+          <input id="ns-amount-preview" disabled placeholder="0 đ" style="background:var(--gray1);color:var(--gray7);font-weight:600" value="${isEdit ? fmtMoney(existing.budget_amount) : ""}">
         </div>
         <div class="field"><label>Ngày hiệu lực</label><input id="ns-date" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
-        <div class="field"><label>Ghi chú (lý do điều chỉnh nếu có)</label><textarea id="ns-note"></textarea></div>
+        <div class="field"><label>Ghi chú (lý do điều chỉnh nếu có)</label><textarea id="ns-note">${isEdit ? escapeHtml(existing.note || "") : ""}</textarea></div>
         <div class="helper">Lưu sẽ tạo 1 version MỚI cho đúng vật tư này trong dự án — không ghi đè version cũ, giữ nguyên lịch sử. Ngân sách Level 1/2 phía trên sẽ tự cộng thêm dòng này ngay.</div>`,
       footerHtml: `
         <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
         <button class="btn btn-primary" onclick="NganSach.save()">Lưu</button>`,
     });
-    initSearchableSelect("ns-material-ssel", this.materialGroupedOptions());
+
+    const groups = this.materialGroupedOptions();
+    initSearchableSelect("ns-material-ssel", groups);
+    if (isEdit) {
+      // Tìm đúng material_id theo mã để hiện sẵn trong ô tìm kiếm (chỉ để XEM, ô đã bị khóa logic ở save())
+      const material = STATE.materials.find((m) => m.material_code === existing.material_code);
+      if (material) {
+        const input = document.querySelector("#ns-material-ssel .ssel-input");
+        const hidden = document.querySelector("#ns-material-ssel .ssel-value");
+        input.value = `${material.material_code} — ${material.material_name}`;
+        hidden.value = material.id;
+        input.disabled = true;
+      }
+      document.getElementById("ns-project").value = STATE.projects.find((p) => p.project_name === existing.project_name)?.id || "";
+    }
     attachNumberFormat("ns-qty");
     attachNumberFormat("ns-price");
     const updatePreview = () => {
@@ -192,6 +213,18 @@ const NganSach = {
     if (error) { toast("Lỗi: " + error.message, "error"); return; }
     toast(`Đã lưu (version ${nextVersion})!`, "success");
     closeModal();
+    this.renderList();
+  },
+
+  async deleteRow(projectId, materialCode) {
+    if (!confirm(`Xóa toàn bộ ngân sách (mọi lần điều chỉnh) của vật tư "${materialCode}" trong dự án này? Không thể khôi phục.`)) return;
+    const material = STATE.materials.find((m) => m.material_code === materialCode);
+    if (!material) { toast("Không tìm thấy vật tư", "error"); return; }
+    loading(true, "Đang xóa...");
+    const { error } = await sb.from("budget_allocations").delete().eq("project_id", projectId).eq("material_id", material.id);
+    loading(false);
+    if (error) { toast("Lỗi: " + error.message, "error"); return; }
+    toast("Đã xóa!", "success");
     this.renderList();
   },
 };
