@@ -27,7 +27,7 @@ function toast(msg, type) {
 }
 
 // ---------- MODAL ----------
-function openModal({ title, bodyHtml, footerHtml, onClose, wide }) {
+function openModal({ title, bodyHtml, footerHtml, onClose, wide, preventBackdropClose }) {
   closeModal();
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
@@ -41,7 +41,9 @@ function openModal({ title, bodyHtml, footerHtml, onClose, wide }) {
       <div class="modal-body">${bodyHtml || ""}</div>
       ${footerHtml ? `<div class="modal-footer">${footerHtml}</div>` : ""}
     </div>`;
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+  if (!preventBackdropClose) {
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+  }
   document.body.appendChild(overlay);
   if (onClose) overlay._onClose = onClose;
 }
