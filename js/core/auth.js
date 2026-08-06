@@ -20,7 +20,14 @@ async function afterLogin() {
   await loadCoreLookups(); // projects/materials/suppliers dùng chung nhiều module
   loading(false);
   renderShell();
-  navigate("dashboard");
+  const requested = pageFromHash();
+  navigate(requested || "dashboard");
+}
+
+// Đọc #tenTrang từ URL — dùng lúc mở app/F5 để quay lại đúng trang đang xem
+function pageFromHash() {
+  const raw = location.hash.replace(/^#/, "");
+  return NAV_ITEMS.some((n) => n.id === raw) ? raw : null;
 }
 
 async function loadProfile() {
@@ -183,7 +190,9 @@ function toggleMobileMenu() {
   sb_.style.display = sb_.style.display === "block" ? "none" : "block";
 }
 
-// ---------- NAVIGATE — mỗi lần chuyển trang: render vào #content-area ----------
+// ---------- NAVIGATE — mỗi lần chuyển trang: render vào #content-area + cập nhật URL ----------
+let _navigatingFromHash = false; // tránh vòng lặp khi hashchange tự kích hoạt lại navigate()
+
 function navigate(page) {
   const item = NAV_ITEMS.find((n) => n.id === page);
   if (!item || !item.roles.includes(STATE.role)) {
@@ -202,7 +211,20 @@ function navigate(page) {
   });
   container.innerHTML = "";
   mod.render(container);
+
+  if (!_navigatingFromHash && location.hash.replace(/^#/, "") !== page) {
+    history.pushState(null, "", "#" + page);
+  }
 }
+
+// Bấm nút back/forward của trình duyệt -> điều hướng đúng module tương ứng
+window.addEventListener("hashchange", () => {
+  const page = pageFromHash();
+  if (!page || !STATE.role) return; // chưa đăng nhập xong thì bỏ qua
+  _navigatingFromHash = true;
+  navigate(page);
+  _navigatingFromHash = false;
+});
 
 // ---------- KHỞI CHẠY ----------
 document.addEventListener("DOMContentLoaded", checkAuth);
