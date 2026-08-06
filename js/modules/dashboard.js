@@ -32,14 +32,13 @@ const Dashboard = {
 
     const [{ data: alerts }, { data: dailyByProject }] = await Promise.all([alertsQuery, dailyByProjectQuery.limit(200)]);
 
+    this.allAlerts = alerts || []; // giữ lại để mở modal chi tiết theo dự án không cần gọi lại API
+
     const level1Rows = (alerts || []).filter((a) => a.level === 1);
     const totalBudget = level1Rows.reduce((sum, a) => sum + (a.budget_amount || 0), 0);
     const totalCommitted = level1Rows.reduce((sum, a) => sum + (a.committed_amount || 0), 0);
 
     const priority = { over_budget: 0, critical_85: 1, warning_70: 2, ok: 3 };
-    const sortedAlerts = [...(alerts || [])]
-      .filter((a) => a.budget_amount != null)
-      .sort((a, b) => (priority[a.alert_level] ?? 9) - (priority[b.alert_level] ?? 9) || (b.pct_used || 0) - (a.pct_used || 0));
 
     const qtyWarnings = [...(alerts || [])].filter((a) => a.planned_qty != null && (a.pct_received || 0) >= 70).sort((a, b) => (b.pct_received || 0) - (a.pct_received || 0));
 
@@ -48,6 +47,13 @@ const Dashboard = {
       return { ...r, projectName: project ? project.project_name : "—" };
     });
 
+    // Đang xem 1 dự án cụ thể -> hiện thẳng bảng chi tiết hạng mục (không cần bảng theo dự án nữa vì chỉ có 1 dự án)
+    // Đang xem toàn công ty -> hiện bảng tổng theo TỪNG dự án, bấm vào mới xem chi tiết hạng mục (modal)
+    const sortedAlerts = [...(alerts || [])]
+      .filter((a) => a.budget_amount != null)
+      .sort((a, b) => (priority[a.alert_level] ?? 9) - (priority[b.alert_level] ?? 9) || (b.pct_used || 0) - (a.pct_used || 0));
+    const budgetSectionHtml = projectId ? this.buildDetailTableHtml(sortedAlerts) : this.buildProjectSummaryHtml(alerts || []);
+
     body.innerHTML = `
       <div class="kpi-row" style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:16px;max-width:520px">
         ${this.kpiCard("Tổng ngân sách", fmtMoney(totalBudget), "Cấp Level 1")}
@@ -55,25 +61,8 @@ const Dashboard = {
       </div>
 
       <div class="card">
-        <div class="card-header"><h3>Cảnh báo ngân sách theo hạng mục</h3></div>
-        ${
-          sortedAlerts.length
-            ? `<table><thead><tr><th>Cấp</th><th>Hạng mục</th><th>Đã dùng / Ngân sách</th><th>%</th><th>Trạng thái</th></tr></thead><tbody>
-                ${sortedAlerts
-                  .slice(0, 15)
-                  .map(
-                    (a) => `<tr>
-                      <td>${a.level}</td>
-                      <td>${this.pathLabel(a)}</td>
-                      <td class="num">${fmtMoney(a.committed_amount)} / ${fmtMoney(a.budget_amount)}</td>
-                      <td class="num">${a.pct_used || 0}%</td>
-                      <td>${budgetAlertBadge(a.alert_level)}</td>
-                    </tr>`
-                  )
-                  .join("")}
-              </tbody></table>`
-            : emptyStateHtml("Chưa có ngân sách nào được thiết lập.")
-        }
+        <div class="card-header"><h3>${projectId ? "Cảnh báo ngân sách theo hạng mục" : "Ngân sách theo dự án"}</h3></div>
+        ${budgetSectionHtml}
       </div>
 
       <div class="card">
@@ -132,6 +121,67 @@ const Dashboard = {
     if (!data || !data.length) { el.innerHTML = emptyStateHtml("Chưa có dữ liệu."); return; }
     el.innerHTML = "";
     this.renderLineChart("db-chart", data, "receipt_date", "daily_cost");
+  },
+
+  // Bảng tổng theo TỪNG dự án (khi đang xem toàn công ty) — 1 dòng = 1 dự án, cộng dồn từ các dòng Level 1 của dự án đó
+  buildProjectSummaryHtml(alerts) {
+    const byProject = {};
+    alerts
+      .filter((a) => a.level === 1 && a.budget_amount != null)
+      .forEach((a) => {
+        byProject[a.project_id] = byProject[a.project_id] || { projectId: a.project_id, projectName: a.project_name, budget: 0, committed: 0 };
+        byProject[a.project_id].budget += a.budget_amount || 0;
+        byProject[a.project_id].committed += a.committed_amount || 0;
+      });
+    const rows = Object.values(byProject).sort((a, b) => (b.committed / (b.budget || 1)) - (a.committed / (a.budget || 1)));
+    if (!rows.length) return emptyStateHtml("Chưa có ngân sách nào được thiết lập.");
+
+    return `<table><thead><tr><th>Dự án</th><th>Tổng ngân sách</th><th>Đã cam kết</th><th>%</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+      ${rows
+        .map((r) => {
+          const pct = r.budget ? Math.round((r.committed / r.budget) * 1000) / 10 : 0;
+          const level = pct >= 100 ? "over_budget" : pct >= 85 ? "critical_85" : pct >= 70 ? "warning_70" : "ok";
+          return `<tr style="cursor:pointer" onclick="Dashboard.openProjectModal('${r.projectId}', '${escapeHtml(r.projectName).replace(/'/g, "&#39;")}')">
+            <td>${escapeHtml(r.projectName)}</td>
+            <td class="num">${fmtMoney(r.budget)}</td>
+            <td class="num">${fmtMoney(r.committed)}</td>
+            <td class="num">${pct}%</td>
+            <td>${budgetAlertBadge(level)}</td>
+            <td><button class="btn btn-sm btn-secondary">Xem chi tiết</button></td>
+          </tr>`;
+        })
+        .join("")}
+    </tbody></table>`;
+  },
+
+  // Bảng chi tiết hạng mục dùng chung (inline khi đã lọc 1 dự án, hoặc trong modal khi bấm từ bảng theo dự án)
+  buildDetailTableHtml(rows) {
+    if (!rows.length) return emptyStateHtml("Chưa có ngân sách nào được thiết lập cho dự án này.");
+    return `<table><thead><tr><th>Cấp</th><th>Hạng mục</th><th>Đã dùng / Ngân sách</th><th>%</th><th>Trạng thái</th></tr></thead><tbody>
+      ${rows
+        .map(
+          (a) => `<tr>
+            <td>${a.level}</td>
+            <td>${this.pathLabel(a)}</td>
+            <td class="num">${fmtMoney(a.committed_amount)} / ${fmtMoney(a.budget_amount)}</td>
+            <td class="num">${a.pct_used || 0}%</td>
+            <td>${budgetAlertBadge(a.alert_level)}</td>
+          </tr>`
+        )
+        .join("")}
+    </tbody></table>`;
+  },
+
+  openProjectModal(projectId, projectName) {
+    const priority = { over_budget: 0, critical_85: 1, warning_70: 2, ok: 3 };
+    const rows = this.allAlerts
+      .filter((a) => a.project_id === projectId && a.budget_amount != null)
+      .sort((a, b) => (priority[a.alert_level] ?? 9) - (priority[b.alert_level] ?? 9) || (b.pct_used || 0) - (a.pct_used || 0));
+    openModal({
+      title: `Ngân sách — ${projectName}`,
+      bodyHtml: this.buildDetailTableHtml(rows),
+      wide: true,
+    });
   },
 
   kpiCard(label, value, sub) {
