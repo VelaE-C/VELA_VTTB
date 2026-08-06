@@ -1,14 +1,17 @@
 /* ============================================================
    js/modules/dashboard.js
-   Tổng quan — KPI + cảnh báo ngân sách + chi phí theo ngày (SVG tự vẽ,
-   không dùng thư viện ngoài) + top công nợ + thiết bị + vật tư sắp vượt
-   dự trù. Đọc STATE.currentProjectFilter (topbar) để lọc theo dự án —
-   null = toàn công ty (chỉ admin/manager mới có lựa chọn này).
+   Tổng quan — KPI ngân sách + cảnh báo ngân sách + chi phí vật tư theo
+   ngày (bảng theo dự án + biểu đồ có filter riêng: toàn công ty / theo
+   1 dự án). KHÔNG còn công nợ/thanh toán — thuộc phạm vi phòng Kế toán,
+   xem ở tab Công nợ NCC riêng, không cần trên Tổng quan.
    ============================================================ */
 
 const Dashboard = {
+  chartScope: null, // null = toàn công ty, hoặc project_id — độc lập với filter dự án ở topbar
+
   async render(container) {
     container.innerHTML = `<h2>Tổng quan</h2><div id="db-body">${emptyStateHtml("Đang tải...")}</div>`;
+    this.chartScope = STATE.currentProjectFilter || null;
     loading(true, "Đang tải dữ liệu tổng quan...");
     try {
       await this.load();
@@ -18,59 +21,37 @@ const Dashboard = {
   },
 
   async load() {
-    const projectId = STATE.currentProjectFilter; // null = toàn công ty
+    const projectId = STATE.currentProjectFilter;
     const body = document.getElementById("db-body");
 
     let alertsQuery = sb.from("v_budget_alert").select("*");
     if (projectId) alertsQuery = alertsQuery.eq("project_id", projectId);
 
-    const [{ data: alerts }, { data: debtCompany }, debtProjectRes, { data: dailyCompany }, dailyProjectRes, { data: assetValue }, { data: assetLoss }, { data: payments }] = await Promise.all([
-      alertsQuery,
-      sb.from("v_supplier_debt_company").select("*"),
-      projectId ? sb.from("v_supplier_debt_project").select("*").eq("project_id", projectId) : Promise.resolve({ data: null }),
-      sb.from("v_material_daily_cost_company").select("*").order("receipt_date", { ascending: true }).limit(60),
-      projectId ? sb.from("v_material_daily_cost_project").select("*").eq("project_id", projectId).order("receipt_date", { ascending: true }).limit(60) : Promise.resolve({ data: null }),
-      sb.from("v_asset_value_by_project").select("*"),
-      sb.from("v_asset_loss_summary").select("*"),
-      sb.from("payments").select("amount, project_id"),
-    ]);
+    let dailyByProjectQuery = sb.from("v_material_daily_cost_project").select("*").order("receipt_date", { ascending: false });
+    if (projectId) dailyByProjectQuery = dailyByProjectQuery.eq("project_id", projectId);
 
-    // --- KPI: chỉ cộng dòng Level 1 để tránh đếm trùng (Level 1 đã tự cộng dồn Level 2/3 bên dưới) ---
+    const [{ data: alerts }, { data: dailyByProject }] = await Promise.all([alertsQuery, dailyByProjectQuery.limit(200)]);
+
     const level1Rows = (alerts || []).filter((a) => a.level === 1);
     const totalBudget = level1Rows.reduce((sum, a) => sum + (a.budget_amount || 0), 0);
     const totalCommitted = level1Rows.reduce((sum, a) => sum + (a.committed_amount || 0), 0);
-    const totalPaid = (payments || []).filter((p) => !projectId || p.project_id === projectId).reduce((sum, p) => sum + p.amount, 0);
-    const debtRows = projectId ? debtProjectRes.data || [] : debtCompany || [];
-    const totalDebt = debtRows.reduce((sum, d) => sum + d.outstanding_debt, 0);
 
-    // --- Cảnh báo ngân sách: ưu tiên mức nghiêm trọng nhất lên đầu ---
     const priority = { over_budget: 0, critical_85: 1, warning_70: 2, ok: 3 };
     const sortedAlerts = [...(alerts || [])]
       .filter((a) => a.budget_amount != null)
       .sort((a, b) => (priority[a.alert_level] ?? 9) - (priority[b.alert_level] ?? 9) || (b.pct_used || 0) - (a.pct_used || 0));
 
-    // --- Vật tư sắp vượt dự trù (số lượng) ---
     const qtyWarnings = [...(alerts || [])].filter((a) => a.planned_qty != null && (a.pct_received || 0) >= 70).sort((a, b) => (b.pct_received || 0) - (a.pct_received || 0));
 
-    // --- Top công nợ (5 NCC nợ nhiều nhất) ---
-    const topDebt = [...debtRows].sort((a, b) => b.outstanding_debt - a.outstanding_debt).slice(0, 5);
-
-    // --- Chi phí theo ngày (chọn nguồn theo phạm vi đang lọc) ---
-    const dailyData = projectId ? dailyProjectRes.data || [] : dailyCompany || [];
-    const dailyKey = "daily_cost";
-    const dailyDateKey = "receipt_date";
-
-    // --- Thiết bị ---
-    const assetRows = projectId ? (assetValue || []).filter((a) => a.project_id === projectId) : assetValue || [];
-    const assetTotalValue = assetRows.reduce((sum, a) => sum + a.asset_value, 0);
-    const lossRows = (assetLoss || []).filter((a) => a.qty_unaccounted > 0);
+    const dailyRows = (dailyByProject || []).map((r) => {
+      const project = STATE.projects.find((p) => p.id === r.project_id);
+      return { ...r, projectName: project ? project.project_name : "—" };
+    });
 
     body.innerHTML = `
-      <div class="kpi-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px">
+      <div class="kpi-row" style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:16px;max-width:520px">
         ${this.kpiCard("Tổng ngân sách", fmtMoney(totalBudget), "Cấp Level 1")}
         ${this.kpiCard("Đã cam kết", fmtMoney(totalCommitted), totalBudget ? Math.round((totalCommitted / totalBudget) * 100) + "% ngân sách" : "")}
-        ${this.kpiCard("Đã thanh toán", fmtMoney(totalPaid), totalCommitted ? Math.round((totalPaid / totalCommitted) * 100) + "% đã cam kết" : "")}
-        ${this.kpiCard("Công nợ hiện tại", fmtMoney(totalDebt), debtRows.some((d) => d.has_overdue) ? "Có NCC quá hạn" : "")}
       </div>
 
       <div class="card">
@@ -96,56 +77,29 @@ const Dashboard = {
       </div>
 
       <div class="card">
-        <div class="card-header"><h3>Chi phí vật tư theo ngày</h3></div>
-        <div id="db-chart">${dailyData.length ? "" : emptyStateHtml("Chưa có dữ liệu.")}</div>
+        <div class="card-header">
+          <h3>Biểu đồ chi phí vật tư theo ngày</h3>
+          <select id="db-chart-scope" style="height:32px;font-size:12.5px">
+            <option value="">Toàn công ty</option>
+            ${STATE.projects.map((p) => `<option value="${p.id}" ${this.chartScope === p.id ? "selected" : ""}>${escapeHtml(p.project_name)}</option>`).join("")}
+          </select>
+        </div>
+        <div id="db-chart">${emptyStateHtml("Đang tải biểu đồ...")}</div>
       </div>
 
       <div class="card">
-        <div class="card-header"><h3>Top công nợ NCC${projectId ? " (dự án đang xem)" : " (toàn công ty)"}</h3></div>
+        <div class="card-header"><h3>Chi phí theo dự án + ngày (${dailyRows.length}${dailyRows.length === 200 ? "+ — chỉ hiện 200 dòng gần nhất" : ""})</h3></div>
         ${
-          topDebt.length
-            ? `<table><thead><tr><th>NCC</th><th>Đã xuất hóa đơn</th><th>Đã trả</th><th>Công nợ</th><th></th></tr></thead><tbody>
-                ${topDebt
-                  .map(
-                    (d) => `<tr>
-                      <td>${escapeHtml(d.supplier_name)}</td>
-                      <td class="num">${fmtMoney(d.total_invoiced)}</td>
-                      <td class="num">${fmtMoney(d.total_paid)}</td>
-                      <td class="num" style="${d.outstanding_debt > 0 ? "color:var(--red);font-weight:600" : ""}">${fmtMoney(d.outstanding_debt)}</td>
-                      <td>${d.has_overdue ? '<span class="badge badge-danger">Quá hạn</span>' : ""}</td>
-                    </tr>`
-                  )
+          dailyRows.length
+            ? `<table><thead><tr><th>Dự án</th><th>Ngày</th><th>Chi phí</th></tr></thead><tbody>
+                ${dailyRows
+                  .slice(0, 60)
+                  .map((r) => `<tr><td>${escapeHtml(r.projectName)}</td><td>${fmtDate(r.receipt_date)}</td><td class="num">${fmtMoney(r.daily_cost)}</td></tr>`)
                   .join("")}
               </tbody></table>`
-            : emptyStateHtml("Chưa có công nợ nào.")
+            : emptyStateHtml("Chưa có dữ liệu chi phí ngày nào.")
         }
       </div>
-
-      ${
-        assetRows.length
-          ? `<div class="card">
-              <div class="card-header"><h3>Giá trị tài sản thiết bị${projectId ? " tại dự án này" : " toàn công ty"}</h3></div>
-              <div style="font-size:20px;font-weight:700;margin-bottom:10px" class="num">${fmtMoney(assetTotalValue)}</div>
-              <table><thead><tr><th>Thiết bị</th><th class="hide-mobile">Dự án</th><th>SL</th><th>Giá trị</th></tr></thead><tbody>
-                ${assetRows
-                  .slice(0, 10)
-                  .map((a) => `<tr><td>${escapeHtml(a.asset_name)}</td><td class="hide-mobile">${escapeHtml(a.project_name)}</td><td class="num">${fmtNumber(a.qty_on_hand)}</td><td class="num">${fmtMoney(a.asset_value)}</td></tr>`)
-                  .join("")}
-              </tbody></table>
-            </div>`
-          : ""
-      }
-
-      ${
-        !projectId && lossRows.length
-          ? `<div class="card">
-              <div class="card-header"><h3>Hao hụt thiết bị cần rà soát</h3></div>
-              <table><thead><tr><th>Thiết bị</th><th>Tổng sở hữu</th><th>Chưa rõ nguyên nhân</th></tr></thead><tbody>
-                ${lossRows.map((r) => `<tr><td>${escapeHtml(r.asset_code)} — ${escapeHtml(r.asset_name)}</td><td class="num">${fmtNumber(r.total_qty_owned)}</td><td class="num" style="color:var(--red);font-weight:600">${fmtNumber(r.qty_unaccounted)}</td></tr>`).join("")}
-              </tbody></table>
-            </div>`
-          : ""
-      }
 
       ${
         qtyWarnings.length
@@ -161,7 +115,23 @@ const Dashboard = {
           : ""
       }`;
 
-    if (dailyData.length) this.renderLineChart("db-chart", dailyData, dailyDateKey, dailyKey);
+    document.getElementById("db-chart-scope").addEventListener("change", (e) => {
+      this.chartScope = e.target.value || null;
+      this.loadChart();
+    });
+    this.loadChart();
+  },
+
+  async loadChart() {
+    const el = document.getElementById("db-chart");
+    el.innerHTML = emptyStateHtml("Đang tải biểu đồ...");
+    let q = sb.from(this.chartScope ? "v_material_daily_cost_project" : "v_material_daily_cost_company").select("*").order("receipt_date", { ascending: true }).limit(60);
+    if (this.chartScope) q = q.eq("project_id", this.chartScope);
+    const { data, error } = await q;
+    if (error) { el.innerHTML = emptyStateHtml("Lỗi tải biểu đồ: " + error.message); return; }
+    if (!data || !data.length) { el.innerHTML = emptyStateHtml("Chưa có dữ liệu."); return; }
+    el.innerHTML = "";
+    this.renderLineChart("db-chart", data, "receipt_date", "daily_cost");
   },
 
   kpiCard(label, value, sub) {
@@ -178,7 +148,6 @@ const Dashboard = {
     return `${escapeHtml(a.l1_name)} › ${escapeHtml(a.l2_name)} › <strong>${escapeHtml(a.material_code)}</strong>`;
   },
 
-  // Vẽ biểu đồ đường đơn giản bằng SVG thuần — không cần thư viện ngoài
   renderLineChart(containerId, data, dateKey, valueKey) {
     const el = document.getElementById(containerId);
     if (!el || !data.length) return;
