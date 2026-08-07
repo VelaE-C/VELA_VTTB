@@ -53,10 +53,10 @@ const NhanXe = {
     this.pageCount = 0;
     this.stopCamera();
 
-    // Chỉ role "manager" (Phòng Vật Tư Thiết Bị) được nhập bù — theo yêu cầu, không mở cho admin ở UI
+    // manager (Phòng Vật Tư Thiết Bị) + admin đều thấy nút nhập bù — mở rộng theo yêu cầu sau này
     // (lưu ý: RLS phía DB vẫn cho phép admin ghi vì fn_is_global() gộp cả admin+manager;
     // đây chỉ là giới hạn ở giao diện theo đúng quy ước làm việc ông muốn).
-    const canBackfill = STATE.role === "manager";
+    const canBackfill = STATE.role === "manager" || STATE.role === "admin";
     const projectOptions = this.availableProjects();
 
     container.innerHTML = `
