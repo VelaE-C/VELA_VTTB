@@ -1,10 +1,15 @@
 /* ============================================================
    js/modules/ngansach.js
    Ngân sách CHỈ nhập ở LEVEL 3 (1 vật tư cụ thể) — Level 1/2 KHÔNG
-   còn nhập tay, tự cộng dồn từ các Level 3 bên dưới (tính trong view
-   v_budget_summary, không phải cộng ở đây). Thiếu vật tư cụ thể nào
-   thì tạo thêm 1 vật tư dạng "X khác" ở đúng nhóm Level 2 đó (qua
-   Danh mục) để có chỗ điền số.
+   còn nhập tay, tự cộng dồn từ các Level 3 bên dưới. Thiếu vật tư cụ
+   thể nào thì tạo thêm 1 vật tư dạng "X khác" ở đúng nhóm Level 2 đó
+   (qua Danh mục) để có chỗ điền số.
+
+   Hiển thị dạng CÂY: trang chính chỉ hiện Level 1 (1 dòng/dự án+nhóm
+   lớn) -> bấm vào mở modal xem Level 2 -> bấm tiếp mở modal xem
+   Level 3 (nơi có nút Sửa/Xóa từng vật tư). Mọi modal ở trang này
+   CHỈ đóng bằng nút ✕, bấm ra ngoài không tắt (tránh mất thao tác
+   đang dở khi xem sâu nhiều lớp).
 
    Số tiền = Số lượng x Đơn giá dự toán — TÍNH TỰ ĐỘNG (cột generated
    trong DB), không nhập tay 2 số riêng để tránh lệch nhau.
@@ -12,6 +17,8 @@
    ============================================================ */
 
 const NganSach = {
+  allAlerts: [],
+
   async render(container) {
     container.innerHTML = `<h2>Ngân sách &amp; Dự trù</h2><div id="ns-body"></div>`;
     await this.renderList();
@@ -29,73 +36,118 @@ const NganSach = {
     loading(false);
     if (error) { toast("Lỗi: " + error.message, "error"); return; }
 
-    const rows = (data || [])
-      .map((r) => {
-        const path =
-          r.level === 1
-            ? `<strong>${escapeHtml(r.l1_name)}</strong>`
-            : r.level === 2
-            ? `${escapeHtml(r.l1_name)} &rsaquo; <strong>${escapeHtml(r.l2_name)}</strong>`
-            : `${escapeHtml(r.l1_name)} &rsaquo; ${escapeHtml(r.l2_name)} &rsaquo; <strong>${escapeHtml(r.material_code)} — ${escapeHtml(r.material_name)}</strong>`;
+    this.allAlerts = data || [];
+    const level1Rows = this.allAlerts.filter((r) => r.level === 1);
 
-        const moneyCell =
-          r.budget_amount != null
-            ? `<div>${fmtMoney(r.committed_amount)} / ${fmtMoney(r.budget_amount)}</div>
-               <div class="bar-track" style="width:100%;height:6px;background:var(--gray2);border-radius:4px;overflow:hidden;margin-top:3px">
-                 <div style="height:100%;width:${Math.min(r.pct_used || 0, 100)}%;background:${this.alertColor(r.alert_level)}"></div>
-               </div>
-               <div style="font-size:11px;color:var(--gray5);margin-top:2px">${r.pct_used || 0}%</div>`
-            : '<span class="badge badge-none">Chưa có Level 3 nào</span>';
-
-        const qtyCell =
-          r.planned_qty != null
-            ? `<div>${fmtNumber(r.received_qty)} / ${fmtNumber(r.planned_qty)}</div>
-               <div style="font-size:11px;color:var(--gray5)">${r.pct_received || 0}%</div>`
-            : r.level === 3
-            ? '<span class="badge badge-none">—</span>'
-            : '<span class="badge badge-none">Khác đơn vị, không cộng SL</span>';
-
-        return `<tr>
+    const rows = level1Rows
+      .map(
+        (r) => `<tr style="cursor:pointer" onclick="NganSach.openL1Modal('${r.project_id}', '${escapeHtml(r.project_name).replace(/'/g, "&#39;")}', '${escapeHtml(r.l1_name).replace(/'/g, "&#39;")}')">
           <td>${escapeHtml(r.project_name)}</td>
-          <td>${path}</td>
-          <td>${moneyCell}</td>
-          <td>${qtyCell}</td>
+          <td><strong>${escapeHtml(r.l1_name)}</strong></td>
+          <td>${this.moneyCellHtml(r)}</td>
           <td>${r.alert_level ? budgetAlertBadge(r.alert_level) : ""}</td>
-          <td class="table-actions">
-            ${r.level === 3 && this.canWrite() ? `<button class="btn btn-sm btn-secondary" onclick='NganSach.openModal(${JSON.stringify(r).replace(/'/g, "&#39;")})'>Sửa</button>` : ""}
-            ${r.level === 3 && STATE.role === "admin" ? `<button class="btn btn-sm btn-secondary" onclick="NganSach.deleteRow('${r.project_id}', '${r.material_code}')">Xóa</button>` : ""}
-          </td>
-        </tr>`;
-      })
+          <td><button class="btn btn-sm btn-secondary">Xem chi tiết</button></td>
+        </tr>`
+      )
       .join("");
 
     body.innerHTML = `
       <div class="card">
         <div class="card-header">
-          <h3>Phân bổ ngân sách/dự trù (${(data || []).length})</h3>
-          ${this.canWrite() ? `<button class="btn btn-primary btn-sm" onclick="NganSach.openModal()">+ Thêm vật tư vào ngân sách</button>` : ""}
+          <h3>Ngân sách theo nhóm lớn (${level1Rows.length})</h3>
+          ${this.canWrite() ? `<button class="btn btn-primary btn-sm" onclick="NganSach.openEditModal()">+ Thêm vật tư vào ngân sách</button>` : ""}
         </div>
         <div class="helper" style="margin-bottom:10px">
-          Chỉ nhập ở cấp vật tư cụ thể (Level 3) — Level 1/Level 2 hiện ở đây là <strong>tự cộng dồn</strong> từ các vật tư bên dưới,
-          không nhập tay, nên không có nút Sửa/Xóa. Thiếu vật tư nào thì tạo 1 vật tư dạng "X khác" ở Danh mục trong đúng nhóm để có chỗ điền số.
+          Bấm vào 1 dòng để xem chi tiết Level 2, rồi Level 3 (nơi sửa/xóa từng vật tư). Ngân sách chỉ nhập được ở Level 3 —
+          các cấp trên tự cộng dồn, không nhập tay.
         </div>
         ${
-          data && data.length
-            ? `<table><thead><tr><th>Dự án</th><th>Nhóm / Vật tư</th><th>Tiền (đã dùng / ngân sách)</th><th>SL (đã nhận / dự trù)</th><th>Trạng thái</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+          level1Rows.length
+            ? `<table><thead><tr><th>Dự án</th><th>Nhóm lớn (Level 1)</th><th>Tiền (đã dùng / ngân sách)</th><th>Trạng thái</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
             : emptyStateHtml("Chưa có phân bổ nào.")
         }
       </div>`;
+  },
+
+  moneyCellHtml(r) {
+    if (r.budget_amount == null) return '<span class="badge badge-none">Chưa có Level 3 nào</span>';
+    return `<div>${fmtMoney(r.committed_amount)} / ${fmtMoney(r.budget_amount)}</div>
+      <div class="bar-track" style="width:100%;height:6px;background:var(--gray2);border-radius:4px;overflow:hidden;margin-top:3px">
+        <div style="height:100%;width:${Math.min(r.pct_used || 0, 100)}%;background:${this.alertColor(r.alert_level)}"></div>
+      </div>
+      <div style="font-size:11px;color:var(--gray5);margin-top:2px">${r.pct_used || 0}%</div>`;
   },
 
   alertColor(level) {
     return { ok: "var(--green)", warning_70: "var(--amber)", critical_85: "var(--orange)", over_budget: "var(--red)" }[level] || "var(--gray3)";
   },
 
-  openModal(existing) {
+  openL1Modal(projectId, projectName, l1Name) {
+    const rows = this.allAlerts.filter((r) => r.level === 2 && r.project_id === projectId && r.l1_name === l1Name);
+    const html = rows.length
+      ? `<table><thead><tr><th>Nhóm (Level 2)</th><th>Tiền (đã dùng / ngân sách)</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+          ${rows
+            .map(
+              (r) => `<tr style="cursor:pointer" onclick="NganSach.openL2Modal('${projectId}', '${escapeHtml(projectName).replace(/'/g, "&#39;")}', '${escapeHtml(l1Name).replace(/'/g, "&#39;")}', '${escapeHtml(r.l2_name).replace(/'/g, "&#39;")}')">
+                <td><strong>${escapeHtml(r.l2_name)}</strong></td>
+                <td>${this.moneyCellHtml(r)}</td>
+                <td>${r.alert_level ? budgetAlertBadge(r.alert_level) : ""}</td>
+                <td><button class="btn btn-sm btn-secondary">Xem Level 3</button></td>
+              </tr>`
+            )
+            .join("")}
+        </tbody></table>`
+      : emptyStateHtml("Nhóm lớn này chưa có nhóm Level 2 nào có ngân sách.");
+
+    openModal({
+      title: `${projectName} › ${l1Name}`,
+      bodyHtml: html,
+      wide: true,
+      preventBackdropClose: true,
+    });
+  },
+
+  openL2Modal(projectId, projectName, l1Name, l2Name) {
+    const rows = this.allAlerts.filter((r) => r.level === 3 && r.project_id === projectId && r.l1_name === l1Name && r.l2_name === l2Name);
+    const rowsHtml = rows.length
+      ? `<table><thead><tr><th>Vật tư</th><th>Tiền (đã dùng / ngân sách)</th><th>SL (đã nhận / dự trù)</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+          ${rows
+            .map((r) => {
+              const qtyCell =
+                r.planned_qty != null
+                  ? `<div>${fmtNumber(r.received_qty)} / ${fmtNumber(r.planned_qty)}</div><div style="font-size:11px;color:var(--gray5)">${r.pct_received || 0}%</div>`
+                  : "—";
+              return `<tr>
+                <td>${escapeHtml(r.material_code)} — ${escapeHtml(r.material_name)}</td>
+                <td>${this.moneyCellHtml(r)}</td>
+                <td>${qtyCell}</td>
+                <td>${r.alert_level ? budgetAlertBadge(r.alert_level) : ""}</td>
+                <td class="table-actions">
+                  ${this.canWrite() ? `<button class="btn btn-sm btn-secondary" onclick='NganSach.openEditModal(${JSON.stringify(r).replace(/'/g, "&#39;")})'>Sửa</button>` : ""}
+                  ${STATE.role === "admin" ? `<button class="btn btn-sm btn-secondary" onclick="NganSach.deleteRow('${r.project_id}', '${r.material_code}')">Xóa</button>` : ""}
+                </td>
+              </tr>`;
+            })
+            .join("")}
+        </tbody></table>`
+      : emptyStateHtml("Nhóm này chưa có vật tư nào có ngân sách.");
+
+    openModal({
+      title: `${projectName} › ${l1Name} › ${l2Name}`,
+      bodyHtml: `
+        <button class="btn btn-secondary btn-sm" style="margin-bottom:12px" onclick="NganSach.openL1Modal('${projectId}', '${escapeHtml(projectName).replace(/'/g, "&#39;")}', '${escapeHtml(l1Name).replace(/'/g, "&#39;")}')">← Quay lại Level 2</button>
+        ${rowsHtml}`,
+      wide: true,
+      preventBackdropClose: true,
+    });
+  },
+
+  openEditModal(existing) {
     if (!STATE.materials.length) { toast("Chưa có vật tư nào — tạo ở Danh mục trước", "error"); return; }
     const isEdit = !!existing;
     openModal({
       title: isEdit ? `Sửa — ${existing.material_code}` : "Thêm vật tư vào ngân sách",
+      preventBackdropClose: true,
       bodyHtml: `
         <div class="field">
           <label>Dự án</label>
@@ -115,7 +167,7 @@ const NganSach = {
         </div>
         <div class="field"><label>Ngày hiệu lực</label><input id="ns-date" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
         <div class="field"><label>Ghi chú (lý do điều chỉnh nếu có)</label><textarea id="ns-note">${isEdit ? escapeHtml(existing.note || "") : ""}</textarea></div>
-        <div class="helper">Lưu sẽ tạo 1 version MỚI cho đúng vật tư này trong dự án — không ghi đè version cũ, giữ nguyên lịch sử. Ngân sách Level 1/2 phía trên sẽ tự cộng thêm dòng này ngay.</div>`,
+        <div class="helper">Lưu sẽ tạo 1 version MỚI cho đúng vật tư này trong dự án — không ghi đè version cũ, giữ nguyên lịch sử.</div>`,
       footerHtml: `
         <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
         <button class="btn btn-primary" onclick="NganSach.save()">Lưu</button>`,
@@ -124,7 +176,6 @@ const NganSach = {
     const groups = this.materialGroupedOptions();
     initSearchableSelect("ns-material-ssel", groups);
     if (isEdit) {
-      // Tìm đúng material_id theo mã để hiện sẵn trong ô tìm kiếm (chỉ để XEM, ô đã bị khóa logic ở save())
       const material = STATE.materials.find((m) => m.material_code === existing.material_code);
       if (material) {
         const input = document.querySelector("#ns-material-ssel .ssel-input");
@@ -185,14 +236,14 @@ const NganSach = {
     if (!price || price <= 0) { toast("Nhập đơn giá dự toán hợp lệ", "error"); return; }
 
     loading(true, "Đang tính version mới...");
-    const { data: existing } = await sb
+    const { data: existingVersions } = await sb
       .from("budget_allocations")
       .select("version")
       .eq("project_id", projectId)
       .eq("material_id", materialId)
       .order("version", { ascending: false })
       .limit(1);
-    const nextVersion = existing && existing.length ? existing[0].version + 1 : 1;
+    const nextVersion = existingVersions && existingVersions.length ? existingVersions[0].version + 1 : 1;
 
     const l2 = STATE.materialGroupsL2.find((g) => g.id === material.l2_id);
 
@@ -225,6 +276,7 @@ const NganSach = {
     loading(false);
     if (error) { toast("Lỗi: " + error.message, "error"); return; }
     toast("Đã xóa!", "success");
+    closeModal();
     this.renderList();
   },
 };
