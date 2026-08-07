@@ -17,7 +17,7 @@
    ============================================================ */
 
 const PHOTO_STEPS = [
-  { type: "phieu_giao_nhan", order: 1, label: "Phiếu giao nhận", highQuality: true, multi: true, maxPages: 3 },
+  { type: "phieu_giao_nhan", order: 1, label: "Phiếu giao nhận", highQuality: true, multi: true, maxPages: 5 },
   { type: "dau_xe", order: 2, label: "Đầu xe", highQuality: false, multi: false },
   { type: "sau_xe", order: 3, label: "Sau lưng xe", highQuality: false, multi: false },
   { type: "hong_xe", order: 4, label: "Bên hông xe", highQuality: false, multi: false },
