@@ -84,20 +84,27 @@ const BaoCaoVatTu = {
           <td>${escapeHtml(r.materials ? r.materials.material_code + " — " + r.materials.material_name : "—")}</td>
           <td>${escapeHtml(r.unit || "—")}</td>
           <td class="num">${fmtNumber(r.qty)}</td>
+          <td class="num">${fmtMoney(r.unit_price)}</td>
+          <td class="num">${fmtMoney(r.qty * r.unit_price)}</td>
           <td>${r.vehicle_receipt_id ? `<button class="btn btn-sm btn-secondary" onclick="BaoCaoVatTu.viewPgn('${r.vehicle_receipt_id}')">Xem PGN</button>` : "—"}</td>
         </tr>`;
       })
       .join("");
 
+    const total = this.currentRows.reduce((sum, r) => sum + r.qty * r.unit_price, 0);
+
     results.innerHTML = `
       <div class="card">
         <div class="card-header">
           <h3>Kết quả (${this.currentRows.length}${this.currentRows.length === 500 ? "+ — chỉ hiện 500 dòng gần nhất, thu hẹp bộ lọc để xem hết" : ""})</h3>
-          ${this.currentRows.length ? `<button class="btn btn-secondary btn-sm" onclick="BaoCaoVatTu.exportExcel()">Xuất Excel</button>` : ""}
+          <div style="display:flex;align-items:center;gap:16px">
+            <strong class="num">Tổng: ${fmtMoney(total)}</strong>
+            ${this.currentRows.length ? `<button class="btn btn-secondary btn-sm" onclick="BaoCaoVatTu.exportExcel()">Xuất Excel</button>` : ""}
+          </div>
         </div>
         ${
           this.currentRows.length
-            ? `<table><thead><tr><th>Ngày</th><th>Dự án</th><th>NCC</th><th>Vật tư</th><th>Đơn vị</th><th>Số lượng</th><th>Phiếu giao nhận</th></tr></thead><tbody>${rows}</tbody></table>`
+            ? `<table><thead><tr><th>Ngày</th><th>Dự án</th><th>NCC</th><th>Vật tư</th><th>Đơn vị</th><th>Số lượng</th><th>Đơn giá</th><th>Thành tiền</th><th>Phiếu giao nhận</th></tr></thead><tbody>${rows}</tbody></table>`
             : emptyStateHtml("Không có dữ liệu khớp bộ lọc.")
         }
       </div>`;
@@ -161,6 +168,8 @@ const BaoCaoVatTu = {
         "Vật tư": r.materials ? r.materials.material_code + " — " + r.materials.material_name : "",
         "Đơn vị": r.unit || "",
         "Số lượng": r.qty,
+        "Đơn giá": r.unit_price,
+        "Thành tiền": r.qty * r.unit_price,
       };
     });
     const ws = XLSX.utils.json_to_sheet(rows);
