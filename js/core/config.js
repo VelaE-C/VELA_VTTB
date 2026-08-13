@@ -9,6 +9,10 @@ const CFG = {
   SUPABASE_URL: "https://gvhwjemqarnevatwuktq.supabase.co",
   SUPABASE_ANON_KEY: "sb_publishable_5sf273CSlrsTx4-1RFyl3g_xxvIjh-b",
   APP_NAME: "VELA_VTTB",
+  // Đổi thành true để hiện lại logo/tên VELA (topbar + màn đăng nhập).
+  // Để false khi đi thuyết trình app chưa chính thức áp dụng — không xóa
+  // code, chỉ ẩn tạm, đổi lại được bất cứ lúc nào.
+  SHOW_BRANDING: false,
   STORAGE_BUCKET_VEHICLE_PHOTOS: "vttb-vehicle-photos",
   STORAGE_BUCKET_ATTACHMENTS: "vttb-attachments",
   // Ngưỡng cảnh báo ngân sách — khớp với v_budget_summary.alert_level trong schema
