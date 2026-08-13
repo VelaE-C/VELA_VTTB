@@ -84,11 +84,15 @@ async function logout() {
 }
 
 function showLoginScreen() {
+  const brandBlock = CFG.SHOW_BRANDING
+    ? `<img src="https://raw.githubusercontent.com/VelaE-C/VELA_VTTB/main/Logo%20VELA%20E%26C-01.png" alt="VELA E&amp;C" style="height:84px;width:auto;display:block;margin:0 auto 14px">
+       <h2>VELA_VTTB</h2>`
+    : `<div style="width:64px;height:64px;border-radius:14px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;margin:0 auto 14px">VTTB</div>
+       <h2>Hệ thống Vật Tư Thiết Bị</h2>`;
   document.body.innerHTML = `
     <div id="login-screen">
       <div class="login-box">
-        <img src="https://raw.githubusercontent.com/VelaE-C/VELA_VTTB/main/Logo%20VELA%20E%26C-01.png" alt="VELA E&amp;C" style="height:84px;width:auto;display:block;margin:0 auto 14px">
-        <h2>VELA_VTTB</h2>
+        ${brandBlock}
         <div class="sub">Đăng nhập để tiếp tục</div>
         <div class="field">
           <label>Tài khoản</label>
@@ -112,13 +116,17 @@ function handleLoginClick() {
 
 // ---------- SHELL (topbar + sidebar + bottom nav) ----------
 function renderShell() {
+  const brandBlock = CFG.SHOW_BRANDING
+    ? `<img src="https://raw.githubusercontent.com/VelaE-C/VELA_VTTB/main/LOGO%20VELA_logo%20ngang%20.png" alt="VELA E&amp;C" style="height:32px;width:auto;display:block">
+       <span class="hide-mobile" style="color:rgba(255,255,255,0.7);font-size:12.5px;margin-left:4px">VTTB</span>`
+    : `<div style="width:30px;height:30px;border-radius:7px;background:rgba(255,255,255,0.15);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px">VT</div>
+       <span style="font-weight:600">Hệ thống Vật Tư Thiết Bị</span>`;
   document.body.innerHTML = `
     <div id="app-shell">
       <div id="topbar">
         <button id="menu-toggle" onclick="toggleMobileMenu()">☰</button>
         <div class="brand">
-          <img src="https://raw.githubusercontent.com/VelaE-C/VELA_VTTB/main/LOGO%20VELA_logo%20ngang%20.png" alt="VELA E&amp;C" style="height:32px;width:auto;display:block">
-          <span class="hide-mobile" style="color:rgba(255,255,255,0.7);font-size:12.5px;margin-left:4px">VTTB</span>
+          ${brandBlock}
         </div>
         <div class="spacer"></div>
         <select id="project-filter" onchange="onProjectFilterChange()"></select>
