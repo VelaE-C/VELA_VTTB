@@ -54,7 +54,7 @@ const BaoCaoVatTu = {
     const fromDate = getDateInputValue("bcvt-from");
     const toDate = getDateInputValue("bcvt-to");
 
-    let q = sb.from("goods_receipts").select("*, materials(material_code, material_name, material_groups_l2(name, material_groups_l1(name))), suppliers(supplier_name)");
+    let q = sb.from("goods_receipts").select("*, materials(material_code, material_name, material_groups_l2(name, material_groups_l1(name))), suppliers(supplier_name), vehicle_receipts(receipt_code)");
     if (projectId) q = q.eq("project_id", projectId);
     if (supplierId) q = q.eq("supplier_id", supplierId);
     if (materialId) q = q.eq("material_id", materialId);
@@ -81,6 +81,7 @@ const BaoCaoVatTu = {
         const project = STATE.projects.find((p) => p.id === r.project_id);
         return `<tr>
           <td>${fmtDate(r.receipt_date)}</td>
+          <td class="mono">${escapeHtml(r.vehicle_receipts ? r.vehicle_receipts.receipt_code || "—" : "—")}</td>
           <td>${escapeHtml(project ? project.project_name : "—")}</td>
           <td>${escapeHtml(r.suppliers ? r.suppliers.supplier_name : "—")}</td>
           <td>${escapeHtml(r.materials ? r.materials.material_code + " — " + r.materials.material_name : "—")}</td>
@@ -111,7 +112,7 @@ const BaoCaoVatTu = {
         ${!projectId || !supplierId ? `<div class="helper" style="margin-bottom:8px">Chọn đúng 1 Dự án + 1 NCC ở bộ lọc phía trên để bật nút "Xuất Bill".</div>` : ""}
         ${
           this.currentRows.length
-            ? `<table><thead><tr><th>Ngày</th><th>Dự án</th><th>NCC</th><th>Vật tư</th><th>Đơn vị</th><th>Số lượng</th><th>Đơn giá</th><th>Thành tiền</th><th>Phiếu giao nhận</th></tr></thead><tbody>${rows}</tbody></table>`
+            ? `<table><thead><tr><th>Ngày</th><th>Mã phiếu</th><th>Dự án</th><th>NCC</th><th>Vật tư</th><th>Đơn vị</th><th>Số lượng</th><th>Đơn giá</th><th>Thành tiền</th><th>Phiếu giao nhận</th></tr></thead><tbody>${rows}</tbody></table>`
             : emptyStateHtml("Không có dữ liệu khớp bộ lọc.")
         }
       </div>`;
@@ -177,9 +178,13 @@ const BaoCaoVatTu = {
       preventBackdropClose: true,
       bodyHtml: `
         <div class="field"><label>Công trình</label><input id="bill-congtrinh" value="${escapeHtml(project.project_name)}"></div>
-        <div class="field"><label>Địa chỉ công trình</label><input id="bill-diachi" placeholder="VD: Khu vực Bãi Tiên, ..."></div>
+        <div class="field"><label>Địa chỉ công trình</label><input id="bill-diachi" value="${escapeHtml(project.address || "")}" placeholder="${project.address ? "" : "Chưa khai báo địa chỉ ở Danh mục — vào Danh mục > Dự án để điền sẵn cho lần sau"}"></div>
         <div class="field"><label>Tên Bên A (bên mua)</label><input id="bill-bena-ten-cty" value="CÔNG TY CỔ PHẦN KỸ THUẬT XÂY DỰNG VELA"></div>
-        <div class="field"><label>Bên B (NCC)</label><input id="bill-benb-ten" value="${escapeHtml(supplier.supplier_name)}" disabled style="background:var(--gray1);color:var(--gray5)"></div>
+        <div class="field">
+          <label>Bên B (NCC)</label>
+          <input id="bill-benb-ten" value="${escapeHtml(supplier.full_name || supplier.supplier_name)}" disabled style="background:var(--gray1);color:var(--gray5)">
+          ${!supplier.full_name ? `<div class="helper">Chưa có tên pháp lý đầy đủ — đang dùng tạm tên viết tắt "${escapeHtml(supplier.supplier_name)}". Vào Danh mục &gt; NCC điền "Tên thực tế" để bill chuẩn hơn.</div>` : ""}
+        </div>
         <div class="form-grid">
           <div class="field"><label>Đại diện Bên A — Họ tên</label><input id="bill-bena-ten"></div>
           <div class="field"><label>Đại diện Bên A — Chức vụ</label><input id="bill-bena-cv"></div>
@@ -207,6 +212,8 @@ const BaoCaoVatTu = {
     const ngayLap = getDateInputValue("bill-ngaylap");
     const fromDate = getDateInputValue("bcvt-from");
     const toDate = getDateInputValue("bcvt-to");
+    const supplierId = document.getElementById("bcvt-supplier").value;
+    const supplier = STATE.suppliers.find((s) => s.id === supplierId) || {};
 
     // Nhóm theo Level 1 (Kết Cấu / Hoàn Thiện / Vật Tư Phụ / Công Tác Khác) làm các mục La Mã như mẫu
     const groups = {};
@@ -225,8 +232,9 @@ const BaoCaoVatTu = {
       const items = groups[l1];
       const subtotal = items.reduce((s, r) => s + r.qty * r.unit_price, 0);
       grandTotal += subtotal;
-      bodyHtml += `<tr class="section"><td>${roman[idx] || idx + 1}</td><td colspan="4"><strong>${escapeHtml(l1)}</strong></td><td class="num"><strong>${fmtMoney(subtotal)}</strong></td><td></td></tr>`;
+      bodyHtml += `<tr class="section"><td>${roman[idx] || idx + 1}</td><td colspan="4"><strong>${escapeHtml(l1)}</strong></td><td class="num"><strong>${fmtMoney(subtotal)}</strong></td><td></td><td></td></tr>`;
       items.forEach((r) => {
+        const receiptCode = r.vehicle_receipts ? r.vehicle_receipts.receipt_code : null;
         bodyHtml += `<tr>
           <td>${stt++}</td>
           <td>${escapeHtml(r.materials ? r.materials.material_name : "")}</td>
@@ -234,6 +242,7 @@ const BaoCaoVatTu = {
           <td class="num">${fmtNumber(r.qty)}</td>
           <td class="num">${fmtMoney(r.unit_price).replace(" đ", "")}</td>
           <td class="num">${fmtMoney(r.qty * r.unit_price).replace(" đ", "")}</td>
+          <td>${escapeHtml(receiptCode || "—")}</td>
           <td></td>
         </tr>`;
       });
@@ -272,11 +281,14 @@ ${diaChi ? `<p><strong>Địa chỉ:</strong> ${escapeHtml(diaChi)}</p>` : ""}
 <p>Ông (Bà): ${escapeHtml(benANguoi)} &nbsp;&nbsp; Chức vụ: ${escapeHtml(benACV)}</p>
 <p>2/ Đại diện Bên B (Bên bán): <strong>${escapeHtml(benBTen)}</strong></p>
 <p>Ông (Bà): ${escapeHtml(benBNguoi)} &nbsp;&nbsp; Chức vụ: ${escapeHtml(benBCV)}</p>
+${supplier.tax_code ? `<p>Mã số thuế: ${escapeHtml(supplier.tax_code)}</p>` : ""}
+${supplier.address ? `<p>Địa chỉ: ${escapeHtml(supplier.address)}</p>` : ""}
+${supplier.bank_account ? `<p>Số tài khoản: ${escapeHtml(supplier.bank_account)}${supplier.bank_name ? " tại " + escapeHtml(supplier.bank_name) : ""}</p>` : ""}
 <table>
-  <thead><tr><th>Stt</th><th>Nội dung</th><th>Đvt</th><th>Khối lượng</th><th>Đơn giá</th><th>Thành tiền</th><th>Ghi chú</th></tr></thead>
+  <thead><tr><th>Stt</th><th>Nội dung</th><th>Đvt</th><th>Khối lượng</th><th>Đơn giá</th><th>Thành tiền</th><th>Số phiếu</th><th>Ghi chú</th></tr></thead>
   <tbody>
     ${bodyHtml}
-    <tr class="total-row"><td colspan="5" class="num">Tổng cộng</td><td class="num">${fmtMoney(grandTotal).replace(" đ", "")}</td><td></td></tr>
+    <tr class="total-row"><td colspan="5" class="num">Tổng cộng</td><td class="num">${fmtMoney(grandTotal).replace(" đ", "")}</td><td></td><td></td></tr>
   </tbody>
 </table>
 <p><strong>Bằng chữ:</strong> ${soTienBangChu(grandTotal)}./.</p>
@@ -300,6 +312,7 @@ ${diaChi ? `<p><strong>Địa chỉ:</strong> ${escapeHtml(diaChi)}</p>` : ""}
       const project = STATE.projects.find((p) => p.id === r.project_id);
       return {
         "Ngày": fmtDate(r.receipt_date),
+        "Mã phiếu": r.vehicle_receipts ? r.vehicle_receipts.receipt_code || "" : "",
         "Dự án": project ? project.project_name : "",
         "NCC": r.suppliers ? r.suppliers.supplier_name : "",
         "Vật tư": r.materials ? r.materials.material_code + " — " + r.materials.material_name : "",
