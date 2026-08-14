@@ -81,8 +81,8 @@ const HoaDon = {
             <datalist id="hd-supplier-list">${STATE.suppliers.map((s) => `<option value="${escapeHtml(s.supplier_name)}">`).join("")}</datalist>
           </div>
           <div class="field"><label>Số hóa đơn</label><input id="hd-invoice-no" placeholder="VD: 00003580"></div>
-          <div class="field"><label>Ngày hóa đơn</label><input id="hd-invoice-date" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
-          <div class="field"><label>Hạn thanh toán</label><input id="hd-due-date" type="date"></div>
+          <div class="field"><label>Ngày hóa đơn</label>${dateInputHtml("hd-invoice-date", new Date().toISOString().slice(0, 10))}</div>
+          <div class="field"><label>Hạn thanh toán</label>${dateInputHtml("hd-due-date")}</div>
           <div class="field"><label>% Thuế GTGT</label><input id="hd-vat" type="number" step="any" value="8"></div>
           <div class="field">
             <label>Số tiền NCC ghi trên hóa đơn (bắt buộc)</label>
@@ -92,6 +92,8 @@ const HoaDon = {
         </div>
         <button class="btn btn-primary" onclick="HoaDon.saveHeader()">Tạo và đối chiếu</button>
       </div>`;
+    initDateInput("hd-invoice-date");
+    initDateInput("hd-due-date");
   },
 
   async saveHeader() {
@@ -99,8 +101,8 @@ const HoaDon = {
     const supplierVal = document.getElementById("hd-supplier").value.trim();
     const supplier = STATE.suppliers.find((s) => s.supplier_name === supplierVal);
     const invoiceNo = document.getElementById("hd-invoice-no").value.trim();
-    const invoiceDate = document.getElementById("hd-invoice-date").value;
-    const dueDate = document.getElementById("hd-due-date").value;
+    const invoiceDate = getDateInputValue("hd-invoice-date");
+    const dueDate = getDateInputValue("hd-due-date");
     const vat = parseFloat(document.getElementById("hd-vat").value) || 0;
     const stated = parseFloat(document.getElementById("hd-stated").value);
 
