@@ -101,7 +101,7 @@ const NganSach = {
     this.expandedL2 = new Set();
     this.editingRow = null;
     openModal({
-      title: projectName,
+      titleHtml: `<span style="font-size:19px;color:var(--red);font-weight:700">Dự án ${escapeHtml(projectName)}</span>`,
       bodyHtml: this.buildProjectModalBody(),
       wide: true,
       preventBackdropClose: true,
@@ -176,7 +176,7 @@ const NganSach = {
                   <label>Thành tiền (tự tính)</label>
                   <input id="ns-amount-preview" disabled placeholder="0 đ" style="background:var(--gray1);color:var(--gray7);font-weight:600" value="${ed ? fmtMoney(ed.budget_amount) : ""}">
                 </div>
-                <div class="field"><label>Ngày hiệu lực</label><input id="ns-date" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+                <div class="field"><label>Ngày hiệu lực</label>${dateInputHtml("ns-date", new Date().toISOString().slice(0, 10))}</div>
                 <div class="field full"><label>Ghi chú (lý do điều chỉnh nếu có)</label><textarea id="ns-note">${ed ? escapeHtml(ed.note || "") : ""}</textarea></div>
               </div>
               <div class="helper" style="margin-bottom:8px">Lưu sẽ tạo 1 version MỚI cho đúng vật tư này — không ghi đè version cũ, giữ nguyên lịch sử.</div>
@@ -188,6 +188,7 @@ const NganSach = {
 
   initProjectModalWidgets() {
     initSearchableSelect("ns-material-ssel", this.materialGroupedOptions(), { onSelect: () => {} });
+    initDateInput("ns-date");
     if (this.editingRow) {
       const material = STATE.materials.find((m) => m.material_code === this.editingRow.material_code);
       if (material) {
@@ -220,7 +221,7 @@ const NganSach = {
         ? `<div>${fmtNumber(r.received_qty)} / ${fmtNumber(r.planned_qty)}</div><div style="font-size:11px;color:var(--gray5)">${r.pct_received || 0}%</div>`
         : r.level === 3
         ? '<span class="badge badge-none">—</span>'
-        : '<span class="badge badge-none">Khác đơn vị, không cộng SL</span>';
+        : "";
 
     const actionsCell = actions
       ? `<div class="table-actions">
@@ -301,7 +302,7 @@ const NganSach = {
     const material = STATE.materials.find((m) => m.id === materialId);
     const qty = parseFormattedNumber("ns-qty");
     const price = parseFormattedNumber("ns-price");
-    const date = document.getElementById("ns-date").value;
+    const date = getDateInputValue("ns-date");
     const note = document.getElementById("ns-note").value.trim();
 
     if (!material) { toast("Chọn 1 vật tư trong danh mục", "error"); return; }
