@@ -19,11 +19,11 @@ const BaoCaoVatTu = {
         <div class="form-grid">
           <div class="field">
             <label>Dự án</label>
-            <select id="bcvt-project"><option value="">Tất cả dự án</option>${STATE.projects.map((p) => `<option value="${p.id}">${escapeHtml(p.project_name)}</option>`).join("")}</select>
+            <select id="bcvt-project" onchange="BaoCaoVatTu.onProjectChange()"><option value="">Tất cả dự án</option>${STATE.projects.map((p) => `<option value="${p.id}">${escapeHtml(p.project_name)}</option>`).join("")}</select>
           </div>
           <div class="field">
             <label>Nhà cung cấp</label>
-            <select id="bcvt-supplier"><option value="">Tất cả NCC</option>${STATE.suppliers.map((s) => `<option value="${s.id}">${escapeHtml(s.supplier_name)}</option>`).join("")}</select>
+            <select id="bcvt-supplier" onchange="BaoCaoVatTu.onSupplierChange()"><option value="">Tất cả NCC</option>${STATE.suppliers.map((s) => `<option value="${s.id}">${escapeHtml(s.supplier_name)}</option>`).join("")}</select>
           </div>
           <div class="field">
             <label>Vật tư</label>
@@ -39,6 +39,53 @@ const BaoCaoVatTu = {
     initDateInput("bcvt-from");
     initDateInput("bcvt-to");
     this.applyFilter();
+  },
+
+  // Dự án đổi -> thu hẹp NCC + Vật tư chỉ còn cái thực sự phát sinh ở đúng dự án đó
+  async onProjectChange() {
+    const projectId = document.getElementById("bcvt-project").value;
+    await this.reloadSupplierOptions(projectId);
+    await this.reloadMaterialOptions(projectId, document.getElementById("bcvt-supplier").value);
+  },
+
+  // NCC đổi -> thu hẹp tiếp Vật tư chỉ còn cái NCC đó từng cấp (trong đúng dự án đang chọn nếu có)
+  async onSupplierChange() {
+    const projectId = document.getElementById("bcvt-project").value;
+    const supplierId = document.getElementById("bcvt-supplier").value;
+    await this.reloadMaterialOptions(projectId, supplierId);
+  },
+
+  async reloadSupplierOptions(projectId) {
+    const select = document.getElementById("bcvt-supplier");
+    const current = select.value;
+    if (!projectId) {
+      select.innerHTML = `<option value="">Tất cả NCC</option>${STATE.suppliers.map((s) => `<option value="${s.id}">${escapeHtml(s.supplier_name)}</option>`).join("")}`;
+      select.value = STATE.suppliers.some((s) => s.id === current) ? current : "";
+      return;
+    }
+    const { data } = await sb.from("goods_receipts").select("supplier_id").eq("project_id", projectId).limit(3000);
+    const ids = new Set((data || []).map((r) => r.supplier_id));
+    const options = STATE.suppliers.filter((s) => ids.has(s.id));
+    select.innerHTML = `<option value="">Tất cả NCC (${options.length})</option>${options.map((s) => `<option value="${s.id}">${escapeHtml(s.supplier_name)}</option>`).join("")}`;
+    select.value = options.some((s) => s.id === current) ? current : "";
+  },
+
+  async reloadMaterialOptions(projectId, supplierId) {
+    const select = document.getElementById("bcvt-material");
+    const current = select.value;
+    if (!projectId && !supplierId) {
+      select.innerHTML = `<option value="">Tất cả vật tư</option>${STATE.materials.map((m) => `<option value="${m.id}">${escapeHtml(m.material_code)} — ${escapeHtml(m.material_name)}</option>`).join("")}`;
+      select.value = STATE.materials.some((m) => m.id === current) ? current : "";
+      return;
+    }
+    let q = sb.from("goods_receipts").select("material_id").limit(3000);
+    if (projectId) q = q.eq("project_id", projectId);
+    if (supplierId) q = q.eq("supplier_id", supplierId);
+    const { data } = await q;
+    const ids = new Set((data || []).map((r) => r.material_id));
+    const options = STATE.materials.filter((m) => ids.has(m.id));
+    select.innerHTML = `<option value="">Tất cả vật tư (${options.length})</option>${options.map((m) => `<option value="${m.id}">${escapeHtml(m.material_code)} — ${escapeHtml(m.material_name)}</option>`).join("")}`;
+    select.value = options.some((m) => m.id === current) ? current : "";
   },
 
   async applyFilter() {
