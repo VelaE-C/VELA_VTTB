@@ -31,7 +31,7 @@ const ThanhToan = {
         <div id="tt-debt-hint"></div>
         <div class="form-grid" style="margin-top:6px">
           <div class="field"><label>Đợt thanh toán</label><input id="tt-batch" placeholder="VD: TT đợt 3 - T8/2026"></div>
-          <div class="field"><label>Ngày thanh toán</label><input id="tt-date" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+          <div class="field"><label>Ngày thanh toán</label>${dateInputHtml("tt-date", new Date().toISOString().slice(0, 10))}</div>
           <div class="field"><label>Số tiền</label><input id="tt-amount" type="number" step="any" placeholder="0"></div>
           <div class="field">
             <label>Phương thức</label>
@@ -42,6 +42,7 @@ const ThanhToan = {
         <button class="btn btn-primary" onclick="ThanhToan.save()">Lưu thanh toán</button>
       </div>
       <div id="tt-recent"></div>`;
+    initDateInput("tt-date");
   },
 
   async onProjectSupplierChange() {
@@ -70,7 +71,7 @@ const ThanhToan = {
     const supplierVal = document.getElementById("tt-supplier").value.trim();
     const supplier = STATE.suppliers.find((s) => s.supplier_name === supplierVal);
     const batch = document.getElementById("tt-batch").value.trim();
-    const date = document.getElementById("tt-date").value;
+    const date = getDateInputValue("tt-date");
     const amount = parseFloat(document.getElementById("tt-amount").value);
     const method = document.getElementById("tt-method").value;
     const note = document.getElementById("tt-note").value.trim();
