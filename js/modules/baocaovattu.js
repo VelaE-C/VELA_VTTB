@@ -29,13 +29,15 @@ const BaoCaoVatTu = {
             <label>Vật tư</label>
             <select id="bcvt-material"><option value="">Tất cả vật tư</option>${STATE.materials.map((m) => `<option value="${m.id}">${escapeHtml(m.material_code)} — ${escapeHtml(m.material_name)}</option>`).join("")}</select>
           </div>
-          <div class="field"><label>Từ ngày</label><input id="bcvt-from" type="date"></div>
-          <div class="field"><label>Đến ngày</label><input id="bcvt-to" type="date"></div>
+          <div class="field"><label>Từ ngày</label>${dateInputHtml("bcvt-from")}</div>
+          <div class="field"><label>Đến ngày</label>${dateInputHtml("bcvt-to")}</div>
         </div>
         <button class="btn btn-primary btn-sm" onclick="BaoCaoVatTu.applyFilter()">Lọc</button>
       </div>
       <div id="bcvt-summary"></div>
       <div id="bcvt-results"></div>`;
+    initDateInput("bcvt-from");
+    initDateInput("bcvt-to");
     this.applyFilter();
   },
 
@@ -49,8 +51,8 @@ const BaoCaoVatTu = {
     const projectId = document.getElementById("bcvt-project").value;
     const supplierId = document.getElementById("bcvt-supplier").value;
     const materialId = document.getElementById("bcvt-material").value;
-    const fromDate = document.getElementById("bcvt-from").value;
-    const toDate = document.getElementById("bcvt-to").value;
+    const fromDate = getDateInputValue("bcvt-from");
+    const toDate = getDateInputValue("bcvt-to");
 
     let q = sb.from("goods_receipts").select("*, materials(material_code, material_name, material_groups_l2(name, material_groups_l1(name))), suppliers(supplier_name)");
     if (projectId) q = q.eq("project_id", projectId);
@@ -165,8 +167,8 @@ const BaoCaoVatTu = {
   openBillModal() {
     const projectId = document.getElementById("bcvt-project").value;
     const supplierId = document.getElementById("bcvt-supplier").value;
-    const fromDate = document.getElementById("bcvt-from").value;
-    const toDate = document.getElementById("bcvt-to").value;
+    const fromDate = getDateInputValue("bcvt-from");
+    const toDate = getDateInputValue("bcvt-to");
     const project = STATE.projects.find((p) => p.id === projectId);
     const supplier = STATE.suppliers.find((s) => s.id === supplierId);
 
@@ -184,12 +186,13 @@ const BaoCaoVatTu = {
           <div class="field"><label>Đại diện Bên B — Họ tên</label><input id="bill-benb-nguoi"></div>
           <div class="field"><label>Đại diện Bên B — Chức vụ</label><input id="bill-benb-cv"></div>
         </div>
-        <div class="field"><label>Ngày lập biên bản</label><input id="bill-ngaylap" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+        <div class="field"><label>Ngày lập biên bản</label>${dateInputHtml("bill-ngaylap", new Date().toISOString().slice(0, 10))}</div>
         <div class="helper">Khoảng thời gian thanh toán lấy đúng theo bộ lọc đang áp dụng (${fromDate ? fmtDate(fromDate) : "từ đầu"} — ${toDate ? fmtDate(toDate) : "đến nay"}). Đổi lại bộ lọc trước khi xuất nếu cần khoảng khác.</div>`,
       footerHtml: `
         <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
         <button class="btn btn-primary" onclick="BaoCaoVatTu.generateBill()">Tạo Bill</button>`,
     });
+    initDateInput("bill-ngaylap");
   },
 
   generateBill() {
@@ -201,9 +204,9 @@ const BaoCaoVatTu = {
     const benACV = document.getElementById("bill-bena-cv").value.trim();
     const benBNguoi = document.getElementById("bill-benb-nguoi").value.trim();
     const benBCV = document.getElementById("bill-benb-cv").value.trim();
-    const ngayLap = document.getElementById("bill-ngaylap").value;
-    const fromDate = document.getElementById("bcvt-from").value;
-    const toDate = document.getElementById("bcvt-to").value;
+    const ngayLap = getDateInputValue("bill-ngaylap");
+    const fromDate = getDateInputValue("bcvt-from");
+    const toDate = getDateInputValue("bcvt-to");
 
     // Nhóm theo Level 1 (Kết Cấu / Hoàn Thiện / Vật Tư Phụ / Công Tác Khác) làm các mục La Mã như mẫu
     const groups = {};
