@@ -141,13 +141,14 @@ const ThietBi = {
             <datalist id="mv-supplier-list">${STATE.suppliers.map((s) => `<option value="${escapeHtml(s.supplier_name)}">`).join("")}</datalist>
           </div>
           <div class="field"><label>Số lượng</label><input id="mv-qty" type="number" step="any" placeholder="0"></div>
-          <div class="field"><label>Ngày</label><input id="mv-date" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+          <div class="field"><label>Ngày</label>${dateInputHtml("mv-date", new Date().toISOString().slice(0, 10))}</div>
           <div class="field full"><label>Ghi chú / tình trạng / lý do</label><textarea id="mv-note" placeholder="Bắt buộc ghi lý do nếu là thanh lý"></textarea></div>
         </div>
         <button class="btn btn-primary" onclick="ThietBi.saveMovement()">Lưu</button>
       </div>
       <div id="tb-recent-movements"></div>`;
     this.onMovementTypeChange();
+    initDateInput("mv-date");
     this.renderRecentMovements();
   },
 
@@ -176,7 +177,7 @@ const ThietBi = {
     const fromProject = fromWrap.style.display !== "none" ? document.getElementById("mv-from").value : null;
     const toProject = toWrap.style.display !== "none" ? document.getElementById("mv-to").value : null;
     const qty = parseFloat(document.getElementById("mv-qty").value);
-    const date = document.getElementById("mv-date").value;
+    const date = getDateInputValue("mv-date");
     const note = document.getElementById("mv-note").value.trim();
 
     let supplierId = null;
