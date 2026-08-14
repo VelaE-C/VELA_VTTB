@@ -83,6 +83,50 @@ async function logout() {
   location.reload();
 }
 
+// ---------- ĐỔI MẬT KHẨU — mọi role tự đổi mật khẩu của chính mình ----------
+// Bắt xác nhận mật khẩu hiện tại trước (đăng nhập thử lại) rồi mới cho đổi —
+// dù Supabase không bắt buộc bước này (đã có session), thêm vào cho chắc,
+// tránh ai đó lỡ ngồi vào máy chưa khóa màn hình rồi đổi mật khẩu người khác.
+function openChangePasswordModal() {
+  openModal({
+    title: "Đổi mật khẩu",
+    preventBackdropClose: true,
+    bodyHtml: `
+      <div class="field"><label>Mật khẩu hiện tại</label><input id="cp-current" type="password" autocomplete="current-password"></div>
+      <div class="field"><label>Mật khẩu mới</label><input id="cp-new" type="password" autocomplete="new-password" placeholder="Tối thiểu 6 ký tự"></div>
+      <div class="field"><label>Nhập lại mật khẩu mới</label><input id="cp-confirm" type="password" autocomplete="new-password"></div>`,
+    footerHtml: `
+      <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+      <button class="btn btn-primary" onclick="submitChangePassword()">Đổi mật khẩu</button>`,
+  });
+}
+
+async function submitChangePassword() {
+  const current = document.getElementById("cp-current").value;
+  const newPass = document.getElementById("cp-new").value;
+  const confirm = document.getElementById("cp-confirm").value;
+
+  if (!current) { toast("Nhập mật khẩu hiện tại", "error"); return; }
+  if (!newPass || newPass.length < 6) { toast("Mật khẩu mới phải từ 6 ký tự trở lên", "error"); return; }
+  if (newPass !== confirm) { toast("Mật khẩu mới nhập lại không khớp", "error"); return; }
+
+  loading(true, "Đang xác nhận mật khẩu hiện tại...");
+  // Xác nhận đúng mật khẩu cũ bằng cách đăng nhập thử lại — KHÔNG làm mất session hiện tại nếu đúng
+  const { error: verifyError } = await sb.auth.signInWithPassword({ email: STATE.user.email, password: current });
+  if (verifyError) {
+    loading(false);
+    toast("Mật khẩu hiện tại không đúng", "error");
+    return;
+  }
+
+  loading(true, "Đang đổi mật khẩu...");
+  const { error } = await sb.auth.updateUser({ password: newPass });
+  loading(false);
+  if (error) { toast("Lỗi: " + error.message, "error"); return; }
+  toast("Đã đổi mật khẩu thành công!", "success");
+  closeModal();
+}
+
 function showLoginScreen() {
   const brandBlock = CFG.SHOW_BRANDING
     ? `<img src="https://raw.githubusercontent.com/VelaE-C/VELA_VTTB/main/Logo%20VELA%20E%26C-01.png" alt="VELA E&amp;C" style="height:84px;width:auto;display:block;margin:0 auto 14px">
@@ -131,6 +175,7 @@ function renderShell() {
         <div class="spacer"></div>
         <select id="project-filter" onchange="onProjectFilterChange()"></select>
         <span class="user-email hide-mobile">${escapeHtml(STATE.user.email)} · ${roleLabel(STATE.role)}</span>
+        <button class="btn btn-sm btn-secondary hide-mobile" onclick="openChangePasswordModal()">Đổi mật khẩu</button>
         <button id="btn-logout" onclick="logout()">Thoát</button>
       </div>
       <div id="app-body">
@@ -185,6 +230,9 @@ function renderSidebar() {
       </div>`;
     });
   });
+  html += `<div class="nav-item" data-page="_doi-mat-khau" onclick="openChangePasswordModal()">
+    <span class="nav-icon">🔑</span><span>Đổi mật khẩu</span>
+  </div>`;
   document.getElementById("sidebar").innerHTML = html;
 }
 
