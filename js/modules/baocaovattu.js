@@ -12,6 +12,13 @@
 const BaoCaoVatTu = {
   currentRows: [],
 
+  isProjectScoped() {
+    return ["editor", "project_lead", "viewer"].includes(STATE.role);
+  },
+  canEditBill() {
+    return ["admin", "manager", "project_lead"].includes(STATE.role);
+  },
+
   async render(container) {
     container.innerHTML = `
       <h2>Báo cáo Vật Tư</h2>
@@ -19,7 +26,7 @@ const BaoCaoVatTu = {
         <div class="form-grid">
           <div class="field">
             <label>Dự án</label>
-            <select id="bcvt-project" onchange="BaoCaoVatTu.onProjectChange()"><option value="">Tất cả dự án</option>${STATE.projects.map((p) => `<option value="${p.id}">${escapeHtml(p.project_name)}</option>`).join("")}</select>
+            <select id="bcvt-project" onchange="BaoCaoVatTu.onProjectChange()">${this.isProjectScoped() ? "" : `<option value="">Tất cả dự án</option>`}${STATE.projects.map((p) => `<option value="${p.id}">${escapeHtml(p.project_name)}</option>`).join("")}</select>
           </div>
           <div class="field">
             <label>Nhà cung cấp</label>
@@ -220,31 +227,230 @@ const BaoCaoVatTu = {
     const project = STATE.projects.find((p) => p.id === projectId);
     const supplier = STATE.suppliers.find((s) => s.id === supplierId);
 
+    // Lưu lại phạm vi của bill này — dùng để tải lại đúng danh sách sau mỗi lần Sửa/Xóa/Thêm
+    this.billProjectId = projectId;
+    this.billSupplierId = supplierId;
+    this.billFromDate = fromDate;
+    this.billToDate = toDate;
+    this.billEditingLine = null;
+
     openModal({
-      title: "Xuất Bill — thông tin chứng từ",
+      title: "Xuất Bill — đối chiếu & tạo chứng từ",
       preventBackdropClose: true,
+      wide: true,
       bodyHtml: `
-        <div class="field"><label>Công trình</label><input id="bill-congtrinh" value="${escapeHtml(project.project_name)}"></div>
-        <div class="field"><label>Địa chỉ công trình</label><input id="bill-diachi" value="${escapeHtml(project.address || "")}" placeholder="${project.address ? "" : "Chưa khai báo địa chỉ ở Danh mục — vào Danh mục > Dự án để điền sẵn cho lần sau"}"></div>
-        <div class="field"><label>Tên Bên A (bên mua)</label><input id="bill-bena-ten-cty" value="CÔNG TY CỔ PHẦN KỸ THUẬT XÂY DỰNG VELA"></div>
-        <div class="field">
-          <label>Bên B (NCC)</label>
-          <input id="bill-benb-ten" value="${escapeHtml(supplier.full_name || supplier.supplier_name)}" disabled style="background:var(--gray1);color:var(--gray5)">
-          ${!supplier.full_name ? `<div class="helper">Chưa có tên pháp lý đầy đủ — đang dùng tạm tên viết tắt "${escapeHtml(supplier.supplier_name)}". Vào Danh mục &gt; NCC điền "Tên thực tế" để bill chuẩn hơn.</div>` : ""}
+        <div class="card">
+          <h3>1. Xem trước &amp; điều chỉnh (nếu đối chiếu NCC thấy sai)</h3>
+          <div class="helper" style="margin-bottom:10px">Sửa/xóa/thêm dòng ở đây sẽ <strong>cập nhật thẳng vào dữ liệu gốc</strong> — áp dụng luôn cho Dashboard, Ngân sách, mọi báo cáo khác, không phải chỉ riêng bill này.</div>
+          <div id="bill-lineitems"></div>
         </div>
-        <div class="form-grid">
-          <div class="field"><label>Đại diện Bên A — Họ tên</label><input id="bill-bena-ten"></div>
-          <div class="field"><label>Đại diện Bên A — Chức vụ</label><input id="bill-bena-cv"></div>
-          <div class="field"><label>Đại diện Bên B — Họ tên</label><input id="bill-benb-nguoi"></div>
-          <div class="field"><label>Đại diện Bên B — Chức vụ</label><input id="bill-benb-cv"></div>
-        </div>
-        <div class="field"><label>Ngày lập biên bản</label>${dateInputHtml("bill-ngaylap", new Date().toISOString().slice(0, 10))}</div>
-        <div class="helper">Khoảng thời gian thanh toán lấy đúng theo bộ lọc đang áp dụng (${fromDate ? fmtDate(fromDate) : "từ đầu"} — ${toDate ? fmtDate(toDate) : "đến nay"}). Đổi lại bộ lọc trước khi xuất nếu cần khoảng khác.</div>`,
+        <div class="card">
+          <h3>2. Thông tin chứng từ</h3>
+          <div class="field"><label>Công trình</label><input id="bill-congtrinh" value="${escapeHtml(project.project_name)}"></div>
+          <div class="field"><label>Địa chỉ công trình</label><input id="bill-diachi" value="${escapeHtml(project.address || "")}" placeholder="${project.address ? "" : "Chưa khai báo địa chỉ ở Danh mục — vào Danh mục > Dự án để điền sẵn cho lần sau"}"></div>
+          <div class="field"><label>Tên Bên A (bên mua)</label><input id="bill-bena-ten-cty" value="CÔNG TY CỔ PHẦN KỸ THUẬT XÂY DỰNG VELA"></div>
+          <div class="field">
+            <label>Bên B (NCC)</label>
+            <input id="bill-benb-ten" value="${escapeHtml(supplier.full_name || supplier.supplier_name)}" disabled style="background:var(--gray1);color:var(--gray5)">
+            ${!supplier.full_name ? `<div class="helper">Chưa có tên pháp lý đầy đủ — đang dùng tạm tên viết tắt "${escapeHtml(supplier.supplier_name)}". Vào Danh mục &gt; NCC điền "Tên thực tế" để bill chuẩn hơn.</div>` : ""}
+          </div>
+          <div class="form-grid">
+            <div class="field"><label>Đại diện Bên A — Họ tên</label><input id="bill-bena-ten"></div>
+            <div class="field"><label>Đại diện Bên A — Chức vụ</label><input id="bill-bena-cv"></div>
+            <div class="field"><label>Đại diện Bên B — Họ tên</label><input id="bill-benb-nguoi"></div>
+            <div class="field"><label>Đại diện Bên B — Chức vụ</label><input id="bill-benb-cv"></div>
+          </div>
+          <div class="field"><label>Ngày lập biên bản</label>${dateInputHtml("bill-ngaylap", new Date().toISOString().slice(0, 10))}</div>
+          <div class="helper">Khoảng thời gian thanh toán lấy đúng theo bộ lọc đang áp dụng (${fromDate ? fmtDate(fromDate) : "từ đầu"} — ${toDate ? fmtDate(toDate) : "đến nay"}). Đổi lại bộ lọc trước khi mở lại "Xuất Bill" nếu cần khoảng khác.</div>
+        </div>`,
       footerHtml: `
         <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
         <button class="btn btn-primary" onclick="BaoCaoVatTu.generateBill()">Tạo Bill</button>`,
     });
     initDateInput("bill-ngaylap");
+    this.renderBillLineItems();
+  },
+
+  // Vẽ lại đúng khối "Xem trước & điều chỉnh" — không đụng tới phần thông tin chứng từ bên dưới
+  // (giữ nguyên giá trị người dùng đã gõ vào tên đại diện/ngày lập... khi họ vừa sửa 1 dòng)
+  renderBillLineItems() {
+    const el = document.getElementById("bill-lineitems");
+    if (!el) return;
+    const canEdit = this.canEditBill();
+
+    const rows = this.currentRows
+      .map(
+        (r) => `<tr>
+          <td>${fmtDate(r.receipt_date)}</td>
+          <td>${escapeHtml(r.materials ? r.materials.material_code + " — " + r.materials.material_name : "—")}</td>
+          <td>${escapeHtml(r.unit || "—")}</td>
+          <td class="num">${fmtNumber(r.qty)}</td>
+          <td class="num">${fmtMoney(r.unit_price)}</td>
+          <td class="num">${fmtMoney(r.qty * r.unit_price)}</td>
+          <td>${escapeHtml(r.note || "")}</td>
+          ${
+            canEdit
+              ? `<td class="table-actions">
+                  <button class="btn btn-sm btn-secondary" onclick='BaoCaoVatTu.startBillLineEdit(${JSON.stringify(r).replace(/'/g, "&#39;")})'>Sửa</button>
+                  <button class="btn btn-sm btn-secondary" onclick="BaoCaoVatTu.deleteBillLine('${r.id}')">Xóa</button>
+                </td>`
+              : ""
+          }
+        </tr>`
+      )
+      .join("");
+
+    const total = this.currentRows.reduce((s, r) => s + r.qty * r.unit_price, 0);
+    const ed = this.billEditingLine;
+    const colCount = canEdit ? 8 : 7;
+
+    el.innerHTML = `
+      <table><thead><tr><th>Ngày</th><th>Vật tư</th><th>ĐV</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th><th>Lý do sửa gần nhất</th>${canEdit ? "<th></th>" : ""}</tr></thead><tbody>
+        ${rows || `<tr><td colspan="${colCount}">${emptyStateHtml("Chưa có dòng nào.")}</td></tr>`}
+      </tbody></table>
+      <div style="text-align:right;margin-top:6px"><strong class="num">Tổng: ${fmtMoney(total)}</strong></div>
+
+      ${
+        canEdit
+          ? `<div class="card" style="background:var(--gray1);margin-top:12px">
+              <h3>${ed ? `Sửa dòng — ${escapeHtml(ed.materials ? ed.materials.material_code : "")}` : "Thêm dòng phát sinh"}</h3>
+              ${ed ? `<button class="btn btn-sm btn-secondary" onclick="BaoCaoVatTu.cancelBillLineEdit()" style="margin-bottom:8px">Hủy sửa, thêm mới</button>` : ""}
+              <div class="form-grid">
+                <div class="field full">
+                  <label>Vật tư</label>
+                  ${searchableSelectHtml("bill-line-material-ssel", "Gõ mã hoặc tên vật tư...")}
+                </div>
+                <div class="field"><label>Đơn vị</label><input id="bill-line-unit" value="${ed ? escapeHtml(ed.unit || "") : ""}"></div>
+                <div class="field"><label>Số lượng</label><input id="bill-line-qty" value="${ed ? fmtNumber(ed.qty) : ""}"></div>
+                <div class="field"><label>Đơn giá</label><input id="bill-line-price" value="${ed ? fmtNumber(ed.unit_price) : ""}"></div>
+                <div class="field"><label>Ngày nhận</label>${dateInputHtml("bill-line-date", ed ? ed.receipt_date : new Date().toISOString().slice(0, 10))}</div>
+                <div class="field full"><label>Lý do điều chỉnh (bắt buộc)</label><textarea id="bill-line-reason" placeholder="VD: Đối chiếu với NCC ngày .../.../..., điều chỉnh SL từ X xuống Y do đo lại thực tế"></textarea></div>
+              </div>
+              <button class="btn btn-primary" onclick="BaoCaoVatTu.saveBillLine()">${ed ? "Lưu điều chỉnh" : "+ Thêm dòng"}</button>
+            </div>`
+          : `<div class="helper" style="margin-top:8px">Bạn chỉ có quyền xem — không sửa/xóa/thêm được ở đây.</div>`
+      }`;
+
+    if (!canEdit) return;
+    initSearchableSelect("bill-line-material-ssel", this.materialGroupedOptions());
+    if (ed) {
+      const material = STATE.materials.find((m) => m.id === ed.material_id);
+      if (material) {
+        const input = document.querySelector("#bill-line-material-ssel .ssel-input");
+        const hidden = document.querySelector("#bill-line-material-ssel .ssel-value");
+        input.value = `${material.material_code} — ${material.material_name}`;
+        hidden.value = material.id;
+      }
+    }
+    attachNumberFormat("bill-line-qty");
+    attachNumberFormat("bill-line-price");
+    initDateInput("bill-line-date");
+  },
+
+  materialGroupedOptions() {
+    const l2ById = {};
+    STATE.materialGroupsL2.forEach((g) => { l2ById[g.id] = g; });
+    const l1ById = {};
+    STATE.materialGroupsL1.forEach((g) => { l1ById[g.id] = g; });
+    const label = (m) => `${m.material_code} — ${m.material_name}`;
+    const byGroup = {};
+    const noGroup = [];
+    STATE.materials.forEach((m) => {
+      const l2 = l2ById[m.l2_id];
+      const l1 = l2 ? l1ById[l2.l1_id] : null;
+      if (!l2 || !l1) { noGroup.push(m); return; }
+      const key = `${l1.name} › ${l2.name}`;
+      byGroup[key] = byGroup[key] || [];
+      byGroup[key].push(m);
+    });
+    const groups = Object.keys(byGroup)
+      .sort()
+      .map((key) => ({ groupLabel: key, items: byGroup[key].sort((a, b) => a.material_code.localeCompare(b.material_code)).map((m) => ({ value: m.id, label: label(m) })) }));
+    if (noGroup.length) groups.push({ groupLabel: "Chưa gán nhóm", items: noGroup.map((m) => ({ value: m.id, label: label(m) })) });
+    return groups;
+  },
+
+  startBillLineEdit(row) {
+    this.billEditingLine = row;
+    this.renderBillLineItems();
+  },
+  cancelBillLineEdit() {
+    this.billEditingLine = null;
+    this.renderBillLineItems();
+  },
+
+  async saveBillLine() {
+    const materialId = getSearchableSelectValue("bill-line-material-ssel");
+    const material = STATE.materials.find((m) => m.id === materialId);
+    const unit = document.getElementById("bill-line-unit").value.trim();
+    const qty = parseFormattedNumber("bill-line-qty");
+    const price = parseFormattedNumber("bill-line-price");
+    const date = getDateInputValue("bill-line-date");
+    const reason = document.getElementById("bill-line-reason").value.trim();
+
+    if (!material) { toast("Chọn 1 vật tư trong danh mục", "error"); return; }
+    if (!qty || qty <= 0) { toast("Nhập số lượng hợp lệ", "error"); return; }
+    if (isNaN(price) || price < 0) { toast("Nhập đơn giá hợp lệ", "error"); return; }
+    if (!date) { toast("Nhập ngày nhận hợp lệ", "error"); return; }
+    if (!reason) { toast("Bắt buộc ghi lý do điều chỉnh", "error"); return; }
+
+    loading(true, "Đang lưu...");
+    const payload = {
+      project_id: this.billProjectId,
+      supplier_id: this.billSupplierId,
+      material_id: materialId,
+      unit: unit || null,
+      qty,
+      unit_price: price,
+      receipt_date: date,
+      note: reason,
+    };
+    const { error } = this.billEditingLine
+      ? await sb.from("goods_receipts").update(payload).eq("id", this.billEditingLine.id)
+      : await sb.from("goods_receipts").insert({ ...payload, created_by: STATE.user.id });
+    loading(false);
+    if (error) {
+      if (error.code === "42501" || /policy/i.test(error.message)) {
+        toast(this.billEditingLine ? "Phiếu này đã quá 24h — chỉ Admin mới sửa được, liên hệ Admin để điều chỉnh" : "Bạn không có quyền thêm phiếu cho dự án này", "error");
+      } else {
+        toast("Lỗi: " + error.message, "error");
+      }
+      return;
+    }
+    toast(this.billEditingLine ? "Đã lưu điều chỉnh!" : "Đã thêm dòng!", "success");
+    this.billEditingLine = null;
+    await this.reloadBillRows();
+  },
+
+  async deleteBillLine(id) {
+    if (!confirm("Xóa dòng này khỏi dữ liệu? Không thể khôi phục.")) return;
+    loading(true, "Đang xóa...");
+    const { error } = await sb.from("goods_receipts").delete().eq("id", id);
+    loading(false);
+    if (error) {
+      if (error.code === "42501" || /policy/i.test(error.message)) toast("Chỉ Admin mới xóa được phiếu nhận hàng — liên hệ Admin để điều chỉnh", "error");
+      else toast("Lỗi: " + error.message, "error");
+      return;
+    }
+    toast("Đã xóa!", "success");
+    await this.reloadBillRows();
+  },
+
+  // Tải lại đúng danh sách theo phạm vi của bill đang mở (Dự án + NCC + khoảng ngày lúc mở modal)
+  async reloadBillRows() {
+    loading(true, "Đang tải lại...");
+    let q = sb
+      .from("goods_receipts")
+      .select("*, materials(material_code, material_name, material_groups_l2(name, material_groups_l1(name))), suppliers(supplier_name), vehicle_receipts(receipt_code)")
+      .eq("project_id", this.billProjectId)
+      .eq("supplier_id", this.billSupplierId);
+    if (this.billFromDate) q = q.gte("receipt_date", this.billFromDate);
+    if (this.billToDate) q = q.lte("receipt_date", this.billToDate);
+    const { data, error } = await q.order("receipt_date", { ascending: true }).limit(500);
+    loading(false);
+    if (error) { toast("Lỗi: " + error.message, "error"); return; }
+    this.currentRows = data || [];
+    this.renderBillLineItems();
   },
 
   generateBill() {
