@@ -25,8 +25,8 @@ const CFG = {
 const STATE = {
   user: null,          // supabase auth user
   profile: null,       // { id, full_name, email, role }
-  role: null,           // 'admin' | 'manager' | 'editor' | 'viewer'
-  assignedProjects: [], // mảng project_id — chỉ có ý nghĩa khi role editor/viewer
+  role: null,           // 'admin' | 'manager' | 'company_viewer' | 'editor' | 'project_lead' | 'viewer'
+  assignedProjects: [], // mảng project_id — có ý nghĩa với role editor/project_lead/viewer (role theo dự án)
   currentPage: null,
   currentProjectFilter: null, // project_id đang lọc ở top bar (null = tất cả, nếu được phép)
   // cache dữ liệu dùng chung nhiều module — mỗi module tự load khi cần, tránh load thừa lúc khởi động
@@ -47,18 +47,18 @@ window.MODULES = window.MODULES || {};
 // Định nghĩa tab điều hướng — 1 nơi duy nhất, app-specific (main.js dùng để render sidebar/bottom nav)
 // roles: role nào được thấy tab này trong sidebar (ẩn hẳn khỏi DOM nếu không đủ quyền)
 const NAV_ITEMS = [
-  { id: "dashboard", label: "Tổng quan", icon: "📊", group: null, roles: ["admin", "manager", "editor", "viewer"], bottomNav: true },
+  { id: "dashboard", label: "Tổng quan", icon: "📊", group: null, roles: ["admin", "manager", "company_viewer", "editor", "project_lead", "viewer"], bottomNav: true },
   { id: "nhanxe", label: "Nhận xe", icon: "🚚", group: "Vật tư", roles: ["admin", "manager", "editor"], bottomNav: true },
   { id: "nhapchitiet", label: "Nhập chi tiết", icon: "📝", group: "Vật tư", roles: ["admin", "manager"], bottomNav: false },
-  { id: "ngansach", label: "Ngân sách & Dự trù", icon: "💰", group: "Vật tư", roles: ["admin", "manager", "editor", "viewer"], bottomNav: false },
+  { id: "ngansach", label: "Ngân sách & Dự trù", icon: "💰", group: "Vật tư", roles: ["admin", "manager", "company_viewer", "editor", "project_lead", "viewer"], bottomNav: false },
   // 3 tab dưới đây ẩn khỏi sidebar — phòng kế toán dùng hệ thống riêng, không cần trong app này.
   // Giữ nguyên file module (hoadon.js/thanhtoan.js/congno.js) trong repo phòng khi cần dùng lại.
   // { id: "hoadon", label: "Hóa đơn", icon: "🧾", group: "Kế toán", roles: ["admin","manager","editor"] },
   // { id: "thanhtoan", label: "Thanh toán", icon: "💳", group: "Kế toán", roles: ["admin","manager","editor"] },
   // { id: "congno", label: "Công nợ NCC", icon: "📇", group: "Kế toán", roles: ["admin","manager","editor","viewer"] },
-  { id: "baocaovattu", label: "Báo cáo Vật Tư", icon: "📋", group: "Kế toán", roles: ["admin", "manager", "editor", "viewer"], bottomNav: false },
-  { id: "thietbi", label: "Thiết bị", icon: "🏗️", group: "Thiết bị", roles: ["admin", "manager", "editor", "viewer"], bottomNav: false },
+  { id: "baocaovattu", label: "Báo cáo Vật Tư", icon: "📋", group: "Kế toán", roles: ["admin", "manager", "company_viewer", "project_lead"], bottomNav: false },
+  { id: "thietbi", label: "Thiết bị", icon: "🏗️", group: "Thiết bị", roles: ["admin", "manager", "company_viewer", "editor", "project_lead", "viewer"], bottomNav: false },
   { id: "giavattu", label: "Báo cáo giá", icon: "📈", group: "Báo cáo", roles: ["admin", "manager"], bottomNav: false },
-  { id: "danhmuc", label: "Danh mục", icon: "🗂️", group: "Dữ liệu nền", roles: ["admin", "manager", "editor", "viewer"], bottomNav: true },
+  { id: "danhmuc", label: "Danh mục", icon: "🗂️", group: "Dữ liệu nền", roles: ["admin", "manager", "company_viewer", "editor", "project_lead", "viewer"], bottomNav: true },
   { id: "users", label: "Người dùng", icon: "👤", group: "Dữ liệu nền", roles: ["admin"], bottomNav: false },
 ];
