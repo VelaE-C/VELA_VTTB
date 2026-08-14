@@ -27,7 +27,7 @@ function toast(msg, type) {
 }
 
 // ---------- MODAL ----------
-function openModal({ title, bodyHtml, footerHtml, onClose, wide, preventBackdropClose }) {
+function openModal({ title, titleHtml, bodyHtml, footerHtml, onClose, wide, preventBackdropClose }) {
   closeModal();
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
@@ -35,7 +35,7 @@ function openModal({ title, bodyHtml, footerHtml, onClose, wide, preventBackdrop
   overlay.innerHTML = `
     <div class="modal-box"${wide ? ' style="max-width:920px"' : ""}>
       <div class="modal-header">
-        <span>${escapeHtml(title || "")}</span>
+        <span>${titleHtml || escapeHtml(title || "")}</span>
         <button class="modal-close" aria-label="Đóng" onclick="closeModal()">✕</button>
       </div>
       <div class="modal-body">${bodyHtml || ""}</div>
@@ -272,6 +272,44 @@ function openImageViewer(url, altText) {
 function closeImageViewer() {
   const el = document.getElementById("img-viewer-overlay");
   if (el) { if (el._escHandler) document.removeEventListener("keydown", el._escHandler); el.remove(); }
+}
+
+// ---------- SỐ TIỀN BẰNG CHỮ (tiếng Việt) — dùng cho chứng từ in ấn ----------
+function soTienBangChu(num) {
+  num = Math.round(num);
+  if (num === 0) return "Không đồng";
+  const chuSo = ["không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín"];
+  const donVi3 = ["", "nghìn", "triệu", "tỷ"];
+
+  function docBaSo(n, hasHigher) {
+    const tram = Math.floor(n / 100);
+    const chuc = Math.floor((n % 100) / 10);
+    const dv = n % 10;
+    let s = "";
+    if (tram > 0 || hasHigher) s += chuSo[tram] + " trăm ";
+    if (chuc === 0) { if (dv > 0 && (tram > 0 || hasHigher)) s += "linh "; }
+    else if (chuc === 1) s += "mười ";
+    else s += chuSo[chuc] + " mươi ";
+    if (dv === 1 && chuc >= 2) s += "mốt ";
+    else if (dv === 5 && chuc >= 1) s += "lăm ";
+    else if (dv > 0) s += chuSo[dv] + " ";
+    return s.trim();
+  }
+
+  const groups = [];
+  let n = num;
+  while (n > 0) { groups.unshift(n % 1000); n = Math.floor(n / 1000); }
+
+  let result = "";
+  for (let i = 0; i < groups.length; i++) {
+    const g = groups[i];
+    if (g === 0) continue;
+    const hasHigher = i > 0 || groups.length > 1 ? (i < groups.length - 1 ? true : result !== "" || groups[0] >= 100) : false;
+    result += docBaSo(g, i > 0) + " " + donVi3[groups.length - 1 - i] + " ";
+  }
+  result = result.replace(/\s+/g, " ").trim();
+  result = result.charAt(0).toUpperCase() + result.slice(1);
+  return result + " đồng";
 }
 
 // ---------- EMPTY STATE ----------
