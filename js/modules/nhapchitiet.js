@@ -86,8 +86,8 @@ const NhapChiTiet = {
     body.innerHTML = `
       <div class="card">
         <div class="form-grid">
-          <div class="field"><label>Từ ngày</label><input id="nct-hist-from" type="date"></div>
-          <div class="field"><label>Đến ngày</label><input id="nct-hist-to" type="date"></div>
+          <div class="field"><label>Từ ngày</label>${dateInputHtml("nct-hist-from")}</div>
+          <div class="field"><label>Đến ngày</label>${dateInputHtml("nct-hist-to")}</div>
           <div class="field">
             <label>Dự án</label>
             <select id="nct-hist-project"><option value="">Tất cả dự án</option>${STATE.projects.map((p) => `<option value="${p.id}">${escapeHtml(p.project_name)}</option>`).join("")}</select>
@@ -100,6 +100,8 @@ const NhapChiTiet = {
         <button class="btn btn-primary btn-sm" onclick="NhapChiTiet.applyHistoryFilter()">Lọc</button>
       </div>
       <div id="nct-history-results"></div>`;
+    initDateInput("nct-hist-from");
+    initDateInput("nct-hist-to");
     this.applyHistoryFilter();
   },
 
@@ -109,8 +111,8 @@ const NhapChiTiet = {
     results.innerHTML = `<div class="card">${emptyStateHtml("Đang tải...")}</div>`;
     loading(true, "Đang tải lịch sử đã nhập...");
 
-    const fromDate = document.getElementById("nct-hist-from").value;
-    const toDate = document.getElementById("nct-hist-to").value;
+    const fromDate = getDateInputValue("nct-hist-from");
+    const toDate = getDateInputValue("nct-hist-to");
     const projectId = document.getElementById("nct-hist-project").value;
     const supplierId = document.getElementById("nct-hist-supplier").value;
 
