@@ -56,8 +56,8 @@ const DanhMuc = {
       .map(
         (p) => `<tr>
           <td>${escapeHtml(p.project_name)}</td>
+          <td class="hide-mobile">${escapeHtml(p.address || "—")}</td>
           <td class="hide-mobile">${p.linked_tiendo_project_id ? '<span class="badge badge-info">Đã liên kết TIENDO</span>' : "—"}</td>
-          <td class="hide-mobile">${fmtDate(p.created_at)}</td>
           <td class="table-actions">${this.canWrite() ? `<button class="btn btn-sm btn-secondary" onclick='DanhMuc.openProjectModal(${JSON.stringify(p).replace(/'/g, "&#39;")})'>Sửa</button>` : ""}</td>
         </tr>`
       )
@@ -71,7 +71,7 @@ const DanhMuc = {
         </div>
         ${
           data && data.length
-            ? `<table><thead><tr><th>Tên dự án</th><th class="hide-mobile">Liên kết TIENDO</th><th class="hide-mobile">Ngày tạo</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+            ? `<table><thead><tr><th>Tên dự án</th><th class="hide-mobile">Địa chỉ</th><th class="hide-mobile">Liên kết TIENDO</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
             : emptyStateHtml("Chưa có dự án nào.")
         }
       </div>`;
@@ -83,6 +83,7 @@ const DanhMuc = {
       title: isEdit ? "Sửa dự án" : "Thêm dự án",
       bodyHtml: `
         <div class="field"><label>Tên dự án</label><input id="pj-name" value="${isEdit ? escapeHtml(project.project_name) : ""}" placeholder="VD: VEGACITY"></div>
+        <div class="field"><label>Địa chỉ</label><input id="pj-address" value="${isEdit ? escapeHtml(project.address || "") : ""}" placeholder="VD: Khu vực Bãi Tiên, Bắc Nha Trang, Khánh Hòa"></div>
         <div class="field"><label>Ghi chú</label><textarea id="pj-note">${isEdit ? escapeHtml(project.note || "") : ""}</textarea></div>`,
       footerHtml: `
         <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
@@ -92,10 +93,11 @@ const DanhMuc = {
 
   async saveProject(id) {
     const name = document.getElementById("pj-name").value.trim();
+    const address = document.getElementById("pj-address").value.trim();
     const note = document.getElementById("pj-note").value.trim();
     if (!name) { toast("Nhập tên dự án", "error"); return; }
     loading(true, "Đang lưu...");
-    const payload = { project_name: name, note: note || null };
+    const payload = { project_name: name, address: address || null, note: note || null };
     const { error } = id ? await sb.from("projects").update(payload).eq("id", id) : await sb.from("projects").insert(payload);
     loading(false);
     if (error) { toast("Lỗi: " + error.message, "error"); return; }
@@ -329,6 +331,7 @@ const DanhMuc = {
       .map(
         (s) => `<tr>
           <td>${escapeHtml(s.supplier_name)}</td>
+          <td class="hide-mobile">${escapeHtml(s.full_name || "—")}</td>
           <td class="hide-mobile">${escapeHtml(s.tax_code || "—")}</td>
           <td class="table-actions">${this.canWriteMasterData() ? `<button class="btn btn-sm btn-secondary" onclick='DanhMuc.openSupplierModal(${JSON.stringify(s).replace(/'/g, "&#39;")})'>Sửa</button>` : ""}</td>
         </tr>`
@@ -343,7 +346,7 @@ const DanhMuc = {
         </div>
         ${
           data && data.length
-            ? `<table><thead><tr><th>Tên NCC</th><th class="hide-mobile">Mã số thuế</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
+            ? `<table><thead><tr><th>Tên viết tắt</th><th class="hide-mobile">Tên thực tế</th><th class="hide-mobile">Mã số thuế</th><th></th></tr></thead><tbody>${rows}</tbody></table>`
             : emptyStateHtml("Chưa có NCC nào.")
         }
       </div>`;
@@ -354,8 +357,14 @@ const DanhMuc = {
     openModal({
       title: isEdit ? "Sửa NCC" : "Thêm NCC",
       bodyHtml: `
-        <div class="field"><label>Tên NCC</label><input id="sp-name" value="${isEdit ? escapeHtml(supplier.supplier_name) : ""}" placeholder="VD: VÂN ĐAN"></div>
-        <div class="field"><label>Mã số thuế</label><input id="sp-tax" value="${isEdit ? escapeHtml(supplier.tax_code || "") : ""}"></div>`,
+        <div class="field"><label>Tên viết tắt (dùng trong app)</label><input id="sp-name" value="${isEdit ? escapeHtml(supplier.supplier_name) : ""}" placeholder="VD: VÂN ĐAN"></div>
+        <div class="field"><label>Tên thực tế / pháp lý đầy đủ (dùng cho chứng từ)</label><input id="sp-fullname" value="${isEdit ? escapeHtml(supplier.full_name || "") : ""}" placeholder="VD: CÔNG TY CỔ PHẦN VÂN ĐAN"></div>
+        <div class="field"><label>Mã số thuế</label><input id="sp-tax" value="${isEdit ? escapeHtml(supplier.tax_code || "") : ""}"></div>
+        <div class="field"><label>Địa chỉ</label><input id="sp-address" value="${isEdit ? escapeHtml(supplier.address || "") : ""}"></div>
+        <div class="form-grid">
+          <div class="field"><label>Số tài khoản ngân hàng</label><input id="sp-bank-account" value="${isEdit ? escapeHtml(supplier.bank_account || "") : ""}"></div>
+          <div class="field"><label>Tên ngân hàng</label><input id="sp-bank-name" value="${isEdit ? escapeHtml(supplier.bank_name || "") : ""}" placeholder="VD: Vietcombank - CN Nha Trang"></div>
+        </div>`,
       footerHtml: `
         <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
         <button class="btn btn-primary" onclick="DanhMuc.saveSupplier(${isEdit ? `'${supplier.id}'` : "null"})">Lưu</button>`,
@@ -364,10 +373,21 @@ const DanhMuc = {
 
   async saveSupplier(id) {
     const name = document.getElementById("sp-name").value.trim();
+    const fullName = document.getElementById("sp-fullname").value.trim();
     const tax = document.getElementById("sp-tax").value.trim();
+    const address = document.getElementById("sp-address").value.trim();
+    const bankAccount = document.getElementById("sp-bank-account").value.trim();
+    const bankName = document.getElementById("sp-bank-name").value.trim();
     if (!name) { toast("Nhập tên NCC", "error"); return; }
     loading(true, "Đang lưu...");
-    const payload = { supplier_name: name, tax_code: tax || null };
+    const payload = {
+      supplier_name: name,
+      full_name: fullName || null,
+      tax_code: tax || null,
+      address: address || null,
+      bank_account: bankAccount || null,
+      bank_name: bankName || null,
+    };
     const { error } = id ? await sb.from("suppliers").update(payload).eq("id", id) : await sb.from("suppliers").insert(payload);
     loading(false);
     if (error) {
