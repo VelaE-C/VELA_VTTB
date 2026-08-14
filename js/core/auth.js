@@ -41,7 +41,7 @@ async function loadProfile() {
   }
   STATE.profile = data;
   STATE.role = data.role;
-  if (STATE.role === "editor" || STATE.role === "viewer") {
+  if (STATE.role === "editor" || STATE.role === "project_lead" || STATE.role === "viewer") {
     const { data: ups } = await sb.from("user_projects").select("project_id").eq("user_id", STATE.user.id);
     STATE.assignedProjects = (ups || []).map((r) => r.project_id);
   } else {
@@ -145,12 +145,19 @@ function renderShell() {
 }
 
 function roleLabel(role) {
-  return { admin: "Quản trị viên", manager: "Quản lý", editor: "Biên tập", viewer: "Chỉ xem" }[role] || role;
+  return {
+    admin: "Quản trị viên",
+    manager: "Quản lý",
+    company_viewer: "Xem toàn công ty",
+    editor: "Biên tập",
+    project_lead: "Trưởng dự án",
+    viewer: "Chỉ xem",
+  }[role] || role;
 }
 
 function renderProjectFilter() {
   const sel = document.getElementById("project-filter");
-  const isGlobal = STATE.role === "admin" || STATE.role === "manager";
+  const isGlobal = STATE.role === "admin" || STATE.role === "manager" || STATE.role === "company_viewer";
   const options = isGlobal
     ? [`<option value="">Tất cả dự án</option>`, ...STATE.projects.map((p) => `<option value="${p.id}">${escapeHtml(p.project_name)}</option>`)]
     : STATE.projects.map((p) => `<option value="${p.id}">${escapeHtml(p.project_name)}</option>`);
