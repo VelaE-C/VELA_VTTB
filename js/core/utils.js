@@ -274,6 +274,38 @@ function closeImageViewer() {
   if (el) { if (el._escHandler) document.removeEventListener("keydown", el._escHandler); el.remove(); }
 }
 
+// ---------- Ô NHẬP NGÀY dd/mm/yyyy CỐ ĐỊNH — không phụ thuộc ngôn ngữ trình duyệt ----------
+// (khác input type="date" gốc: hiển thị mm/dd/yyyy hay dd/mm/yyyy tùy máy từng người,
+// không ép định dạng được bằng CSS/HTML — nên tự làm ô riêng, luôn dd/mm/yyyy)
+function dateInputHtml(id, isoValue) {
+  let display = "";
+  if (isoValue) {
+    const [y, m, d] = isoValue.split("-");
+    display = `${d}/${m}/${y}`;
+  }
+  return `<input type="text" id="${id}" class="date-vn" placeholder="dd/mm/yyyy" inputmode="numeric" maxlength="10" autocomplete="off" value="${display}">`;
+}
+function initDateInput(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener("input", () => {
+    let v = el.value.replace(/[^\d]/g, "").slice(0, 8);
+    let out = v;
+    if (v.length > 4) out = v.slice(0, 2) + "/" + v.slice(2, 4) + "/" + v.slice(4);
+    else if (v.length > 2) out = v.slice(0, 2) + "/" + v.slice(2);
+    el.value = out;
+  });
+}
+// Đọc lại giá trị ISO (yyyy-mm-dd) để lưu DB/truy vấn — rỗng nếu chưa nhập đủ hoặc sai định dạng
+function getDateInputValue(id) {
+  const el = document.getElementById(id);
+  if (!el || !el.value) return "";
+  const m = el.value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return "";
+  const [, d, mo, y] = m;
+  return `${y}-${mo}-${d}`;
+}
+
 // ---------- SỐ TIỀN BẰNG CHỮ (tiếng Việt) — dùng cho chứng từ in ấn ----------
 function soTienBangChu(num) {
   num = Math.round(num);
