@@ -52,7 +52,7 @@ const BaoCaoVatTu = {
     const fromDate = document.getElementById("bcvt-from").value;
     const toDate = document.getElementById("bcvt-to").value;
 
-    let q = sb.from("goods_receipts").select("*, materials(material_code, material_name), suppliers(supplier_name)");
+    let q = sb.from("goods_receipts").select("*, materials(material_code, material_name, material_groups_l2(name, material_groups_l1(name))), suppliers(supplier_name)");
     if (projectId) q = q.eq("project_id", projectId);
     if (supplierId) q = q.eq("supplier_id", supplierId);
     if (materialId) q = q.eq("material_id", materialId);
@@ -92,16 +92,21 @@ const BaoCaoVatTu = {
       .join("");
 
     const total = this.currentRows.reduce((sum, r) => sum + r.qty * r.unit_price, 0);
+    const projectId = document.getElementById("bcvt-project").value;
+    const supplierId = document.getElementById("bcvt-supplier").value;
+    const canBill = projectId && supplierId && this.currentRows.length;
 
     results.innerHTML = `
       <div class="card">
         <div class="card-header">
           <h3>Kết quả (${this.currentRows.length}${this.currentRows.length === 500 ? "+ — chỉ hiện 500 dòng gần nhất, thu hẹp bộ lọc để xem hết" : ""})</h3>
-          <div style="display:flex;align-items:center;gap:16px">
+          <div style="display:flex;align-items:center;gap:10px">
             <strong class="num">Tổng: ${fmtMoney(total)}</strong>
             ${this.currentRows.length ? `<button class="btn btn-secondary btn-sm" onclick="BaoCaoVatTu.exportExcel()">Xuất Excel</button>` : ""}
+            ${canBill ? `<button class="btn btn-primary btn-sm" onclick="BaoCaoVatTu.openBillModal()">Xuất Bill</button>` : ""}
           </div>
         </div>
+        ${!projectId || !supplierId ? `<div class="helper" style="margin-bottom:8px">Chọn đúng 1 Dự án + 1 NCC ở bộ lọc phía trên để bật nút "Xuất Bill".</div>` : ""}
         ${
           this.currentRows.length
             ? `<table><thead><tr><th>Ngày</th><th>Dự án</th><th>NCC</th><th>Vật tư</th><th>Đơn vị</th><th>Số lượng</th><th>Đơn giá</th><th>Thành tiền</th><th>Phiếu giao nhận</th></tr></thead><tbody>${rows}</tbody></table>`
@@ -155,6 +160,135 @@ const BaoCaoVatTu = {
     loading(false);
     if (!signed) { toast("Lỗi tải ảnh", "error"); return; }
     openImageViewer(signed.signedUrl, "Phiếu giao nhận");
+  },
+
+  openBillModal() {
+    const projectId = document.getElementById("bcvt-project").value;
+    const supplierId = document.getElementById("bcvt-supplier").value;
+    const fromDate = document.getElementById("bcvt-from").value;
+    const toDate = document.getElementById("bcvt-to").value;
+    const project = STATE.projects.find((p) => p.id === projectId);
+    const supplier = STATE.suppliers.find((s) => s.id === supplierId);
+
+    openModal({
+      title: "Xuất Bill — thông tin chứng từ",
+      preventBackdropClose: true,
+      bodyHtml: `
+        <div class="field"><label>Công trình</label><input id="bill-congtrinh" value="${escapeHtml(project.project_name)}"></div>
+        <div class="field"><label>Địa chỉ công trình</label><input id="bill-diachi" placeholder="VD: Khu vực Bãi Tiên, ..."></div>
+        <div class="field"><label>Tên Bên A (bên mua)</label><input id="bill-bena-ten-cty" value="CÔNG TY CỔ PHẦN KỸ THUẬT XÂY DỰNG VELA"></div>
+        <div class="field"><label>Bên B (NCC)</label><input id="bill-benb-ten" value="${escapeHtml(supplier.supplier_name)}" disabled style="background:var(--gray1);color:var(--gray5)"></div>
+        <div class="form-grid">
+          <div class="field"><label>Đại diện Bên A — Họ tên</label><input id="bill-bena-ten"></div>
+          <div class="field"><label>Đại diện Bên A — Chức vụ</label><input id="bill-bena-cv"></div>
+          <div class="field"><label>Đại diện Bên B — Họ tên</label><input id="bill-benb-nguoi"></div>
+          <div class="field"><label>Đại diện Bên B — Chức vụ</label><input id="bill-benb-cv"></div>
+        </div>
+        <div class="field"><label>Ngày lập biên bản</label><input id="bill-ngaylap" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+        <div class="helper">Khoảng thời gian thanh toán lấy đúng theo bộ lọc đang áp dụng (${fromDate ? fmtDate(fromDate) : "từ đầu"} — ${toDate ? fmtDate(toDate) : "đến nay"}). Đổi lại bộ lọc trước khi xuất nếu cần khoảng khác.</div>`,
+      footerHtml: `
+        <button class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+        <button class="btn btn-primary" onclick="BaoCaoVatTu.generateBill()">Tạo Bill</button>`,
+    });
+  },
+
+  generateBill() {
+    const congTrinh = document.getElementById("bill-congtrinh").value.trim();
+    const diaChi = document.getElementById("bill-diachi").value.trim();
+    const benATen = document.getElementById("bill-bena-ten-cty").value.trim();
+    const benBTen = document.getElementById("bill-benb-ten").value.trim();
+    const benANguoi = document.getElementById("bill-bena-ten").value.trim();
+    const benACV = document.getElementById("bill-bena-cv").value.trim();
+    const benBNguoi = document.getElementById("bill-benb-nguoi").value.trim();
+    const benBCV = document.getElementById("bill-benb-cv").value.trim();
+    const ngayLap = document.getElementById("bill-ngaylap").value;
+    const fromDate = document.getElementById("bcvt-from").value;
+    const toDate = document.getElementById("bcvt-to").value;
+
+    // Nhóm theo Level 1 (Kết Cấu / Hoàn Thiện / Vật Tư Phụ / Công Tác Khác) làm các mục La Mã như mẫu
+    const groups = {};
+    const order = [];
+    this.currentRows.forEach((r) => {
+      const l1 = r.materials && r.materials.material_groups_l2 && r.materials.material_groups_l2.material_groups_l1 ? r.materials.material_groups_l2.material_groups_l1.name : "Khác";
+      if (!groups[l1]) { groups[l1] = []; order.push(l1); }
+      groups[l1].push(r);
+    });
+
+    const roman = ["I", "II", "III", "IV", "V", "VI", "VII"];
+    let stt = 1;
+    let bodyHtml = "";
+    let grandTotal = 0;
+    order.forEach((l1, idx) => {
+      const items = groups[l1];
+      const subtotal = items.reduce((s, r) => s + r.qty * r.unit_price, 0);
+      grandTotal += subtotal;
+      bodyHtml += `<tr class="section"><td>${roman[idx] || idx + 1}</td><td colspan="4"><strong>${escapeHtml(l1)}</strong></td><td class="num"><strong>${fmtMoney(subtotal)}</strong></td><td></td></tr>`;
+      items.forEach((r) => {
+        bodyHtml += `<tr>
+          <td>${stt++}</td>
+          <td>${escapeHtml(r.materials ? r.materials.material_name : "")}</td>
+          <td>${escapeHtml(r.unit || "")}</td>
+          <td class="num">${fmtNumber(r.qty)}</td>
+          <td class="num">${fmtMoney(r.unit_price).replace(" đ", "")}</td>
+          <td class="num">${fmtMoney(r.qty * r.unit_price).replace(" đ", "")}</td>
+          <td></td>
+        </tr>`;
+      });
+    });
+
+    const periodText = fromDate && toDate ? `từ ngày ${fmtDate(fromDate)} đến ngày ${fmtDate(toDate)}` : fromDate ? `từ ngày ${fmtDate(fromDate)}` : toDate ? `đến ngày ${fmtDate(toDate)}` : "toàn bộ thời gian";
+    const ngayLapText = ngayLap ? new Date(ngayLap) : new Date();
+
+    const html = `<!DOCTYPE html>
+<html lang="vi"><head><meta charset="UTF-8">
+<title>Bill - ${escapeHtml(benBTen)}</title>
+<style>
+  body { font-family: 'Times New Roman', Times, serif; font-size: 13px; color:#000; max-width: 800px; margin: 24px auto; padding: 0 16px; }
+  h2 { text-align:center; margin-bottom: 4px; }
+  .sub { text-align:center; margin-bottom: 16px; }
+  table { width:100%; border-collapse: collapse; margin: 14px 0; }
+  th, td { border: 1px solid #000; padding: 5px 7px; font-size: 12.5px; }
+  th { text-align:center; background:#f0f0f0; }
+  tr.section td { background:#f7f7f7; }
+  .num { text-align:right; }
+  .sign { display:flex; justify-content:space-between; margin-top: 40px; text-align:center; }
+  .sign div { width: 45%; }
+  .sign .line { margin-top: 70px; font-weight:bold; }
+  .total-row td { font-weight:bold; }
+  .print-btn { position:fixed; top:16px; right:16px; padding:8px 16px; background:#2563EB; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px; }
+  @media print { .print-btn { display:none; } }
+</style></head>
+<body>
+<button class="print-btn" onclick="window.print()">In / Lưu PDF</button>
+<h2>BẢNG TỔNG HỢP GIÁ TRỊ THANH TOÁN</h2>
+<div class="sub">(${periodText})</div>
+<p>Hôm nay, ngày ${ngayLapText.getDate()} tháng ${ngayLapText.getMonth() + 1} năm ${ngayLapText.getFullYear()}, các bên gồm có:</p>
+<p><strong>Công trình:</strong> ${escapeHtml(congTrinh)}</p>
+${diaChi ? `<p><strong>Địa chỉ:</strong> ${escapeHtml(diaChi)}</p>` : ""}
+<p>1/ Đại diện Bên A (Bên mua): <strong>${escapeHtml(benATen)}</strong></p>
+<p>Ông (Bà): ${escapeHtml(benANguoi)} &nbsp;&nbsp; Chức vụ: ${escapeHtml(benACV)}</p>
+<p>2/ Đại diện Bên B (Bên bán): <strong>${escapeHtml(benBTen)}</strong></p>
+<p>Ông (Bà): ${escapeHtml(benBNguoi)} &nbsp;&nbsp; Chức vụ: ${escapeHtml(benBCV)}</p>
+<table>
+  <thead><tr><th>Stt</th><th>Nội dung</th><th>Đvt</th><th>Khối lượng</th><th>Đơn giá</th><th>Thành tiền</th><th>Ghi chú</th></tr></thead>
+  <tbody>
+    ${bodyHtml}
+    <tr class="total-row"><td colspan="5" class="num">Tổng cộng</td><td class="num">${fmtMoney(grandTotal).replace(" đ", "")}</td><td></td></tr>
+  </tbody>
+</table>
+<p><strong>Bằng chữ:</strong> ${soTienBangChu(grandTotal)}./.</p>
+<p>Biên bản được lập thành 04 (bốn) bản, mỗi bên giữ 02 (hai) bản có giá trị pháp lý như nhau làm cơ sở cho việc thanh lý hợp đồng.</p>
+<div class="sign">
+  <div>ĐẠI DIỆN BÊN A<div class="line">${escapeHtml(benANguoi)}</div></div>
+  <div>ĐẠI DIỆN BÊN B<div class="line">${escapeHtml(benBNguoi)}</div></div>
+</div>
+</body></html>`;
+
+    const win = window.open("", "_blank");
+    if (!win) { toast("Trình duyệt chặn cửa sổ mới — cho phép popup rồi thử lại", "error"); return; }
+    win.document.write(html);
+    win.document.close();
+    closeModal();
   },
 
   exportExcel() {
